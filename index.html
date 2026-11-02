@@ -3717,6 +3717,18 @@ function suggestBallDp() {
     if(fields.m != null && suggestForOcr('m', Number(fields.m))) ids.push('m');
     if(fields.z != null && suggestForOcr('z', Number(fields.z))) ids.push('z');
     if(fields.standardNo != null && suggestForOcr('standardNo', String(fields.standardNo))) ids.push('standardNo');
+    // 精度等级：设值后触发 change，让系统按既有逻辑联动（刀具精度推荐、fpt/Fp 查表）
+    if(fields.workPrecision != null && suggestForOcr('workPrecision', String(fields.workPrecision))){
+      ids.push('workPrecision');
+      document.getElementById('workPrecision').dispatchEvent(new Event('change',{bubbles:true}));
+    }
+    // 测量几何：量棒直径、跨棒距上下限
+    if(fields.ballDiameter != null && suggestForOcr('ballDiameter', Number(fields.ballDiameter))) ids.push('ballDiameter');
+    if(fields.ballMMin != null && suggestForOcr('ballMMin', Number(fields.ballMMin))) ids.push('ballMMin');
+    if(fields.ballMMax != null && suggestForOcr('ballMMax', Number(fields.ballMMax))) ids.push('ballMMax');
+    // 公差 fpt/Fp 最后填：图纸值覆盖 workPrecision 联动产生的查表值
+    if(fields.fpt != null && suggestForOcr('fpt', Number(fields.fpt))) ids.push('fpt');
+    if(fields.Fp != null && suggestForOcr('Fp', Number(fields.Fp))) ids.push('Fp');
     if(ids.length) refreshAcceptBar();
     return ids.length;
   }
