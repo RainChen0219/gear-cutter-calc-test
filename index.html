@@ -3729,6 +3729,10 @@ function suggestBallDp() {
     // 公差 fpt/Fp 最后填：图纸值覆盖 workPrecision 联动产生的查表值
     if(fields.fpt != null && suggestForOcr('fpt', Number(fields.fpt))) ids.push('fpt');
     if(fields.Fp != null && suggestForOcr('Fp', Number(fields.Fp))) ids.push('Fp');
+    // 高级选项：齿顶高系数、全齿高、变位系数（图纸值，橙色待确认）
+    if(fields.ha != null && suggestForOcr('ha', Number(fields.ha))) ids.push('ha');
+    if(fields.totalHeight != null && suggestForOcr('totalHeight', Number(fields.totalHeight))) ids.push('totalHeight');
+    if(fields.x != null && suggestForOcr('x', Number(fields.x))) ids.push('x');
     if(ids.length) refreshAcceptBar();
     return ids.length;
   }
