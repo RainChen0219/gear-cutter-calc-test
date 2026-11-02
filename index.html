@@ -3721,6 +3721,34 @@ function suggestBallDp() {
       reader.readAsDataURL(file);
     });
   }
+  // OCR 可填写的全部字段（与 applyFields 对应）；重新识图时只重置这些，避免上一张图数据残留
+  var OCR_FIELD_IDS = ['alpha','gearType','m','z','standardNo','workPrecision',
+    'ballDiameter','ballMMin','ballMMax','fpt','Fp','ha','totalHeight','x'];
+  // 重新识图前：把 OCR 字段全部恢复到页面初始状态，并清空待确认/原值快照，防止两次识图信息重合
+  function resetForNewOcr(){
+    OCR_FIELD_IDS.forEach(function(id){
+      delete pendingSuggestions[id];
+      delete pendingMeta[id];
+      delete _ocrPrev[id];
+      var el = document.getElementById(id);
+      if(!el) return;
+      el.classList.remove('suggested-input');
+      delete el.dataset.confirmed;
+      delete el.dataset.fromSuggest;
+      el.value = '';
+      var btn = document.getElementById(id + '_accept');
+      if(btn) btn.style.display = 'none';
+    });
+    // 恢复下拉默认值（与页面初始一致）
+    var alphaEl = document.getElementById('alpha');
+    if(alphaEl) alphaEl.value = '20';
+    var gearEl = document.getElementById('gearType');
+    if(gearEl) gearEl.value = 'external';
+    // 触发压力角 change：重建标准号下拉，并把 ha/hf/c 恢复初始；其余联动因 m 为空会自动退出
+    if(alphaEl) alphaEl.dispatchEvent(new Event('change', { bubbles: true }));
+    refreshAcceptBar();
+    if(typeof clearFieldErrors === 'function') clearFieldErrors();
+  }
   function applyFields(fields){
     var ids = [];
     // 先设压力角并触发联动，确保标准号下拉选项已按新压力角重建
@@ -3756,6 +3784,7 @@ function suggestBallDp() {
     var input = e.target;
     var file = input.files && input.files[0];
     if(!file) return;
+    resetForNewOcr();   // 新识图前清掉上一张图的全部 OCR 数据，避免两次信息重合
     setStatus('正在识别，请稍候…', 'loading');
     readFileAsDataURL(file).then(function(dataUrl){
       return fetch(OCR_API_BASE + '/ocr', {
@@ -3774,6 +3803,8 @@ function suggestBallDp() {
       else setStatus('未能从图中识别出有效参数，请更换清晰图片或手动填写。', 'error');
     }).catch(function(err){
       setStatus('识别失败：' + (err.message || err), 'error');
+    }).finally(function(){
+      input.value = '';   // 清空文件选择，允许再次选择同一文件时重新触发 change
     });
   }
   if(fileInput) fileInput.addEventListener('change', handleChange);
