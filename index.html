@@ -3698,10 +3698,25 @@ function suggestBallDp() {
     statusEl.textContent = msg || '';
     statusEl.className = 'ocr-status' + (type ? ' ' + type : '');
   }
+  var OCR_MAX_EDGE = 1600;   // 上传前最长边限制，足够 OCR 看清文字，大幅减小体积
+  var OCR_JPEG_QUALITY = 0.8;
   function readFileAsDataURL(file){
     return new Promise(function(resolve, reject){
       var reader = new FileReader();
-      reader.onload = function(){ resolve(reader.result); };
+      reader.onload = function(){
+        var img = new Image();
+        img.onload = function(){
+          var w = img.width, h = img.height;
+          var scale = Math.min(1, OCR_MAX_EDGE / Math.max(w, h));
+          var tw = Math.round(w * scale), th = Math.round(h * scale);
+          var canvas = document.createElement('canvas');
+          canvas.width = tw; canvas.height = th;
+          canvas.getContext('2d').drawImage(img, 0, 0, tw, th);
+          resolve(canvas.toDataURL('image/jpeg', OCR_JPEG_QUALITY));
+        };
+        img.onerror = function(){ reject(new Error('图片解码失败')); };
+        img.src = reader.result;
+      };
       reader.onerror = function(){ reject(new Error('读取图片失败')); };
       reader.readAsDataURL(file);
     });
