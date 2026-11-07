@@ -1,6 +1,6 @@
 # 配刀参数计算器（测试版）
 
-![testing](https://img.shields.io/badge/testing-v1.1.0-orange) ![html](https://img.shields.io/badge/html-100%25-orange)
+![testing](https://img.shields.io/badge/testing-v1.1.1-orange) ![html](https://img.shields.io/badge/html-100%25-orange)
 
 本仓库为「配刀参数」测试版，用于新功能先行验证，内容可能领先正式版；正式版仓库见 [gear-cutter-calc](https://github.com/RainChen0219/gear-cutter-calc)。
 
@@ -15,6 +15,7 @@
 - 公制模数 / 英制径节（DP）双模式
 - 20° / 25° / 30° 三种压力角
 - 内齿/内花键、外齿/外花键
+- 加工方式「滚刀」分支（v1.1.1）：外直齿轮/外花键滚刀加工，输出工件参数、公法线与跨棒距、根切校验、滚刀配对、花键大小径；内齿禁用滚刀
 - 碗形插齿刀（φ50/φ75/φ100/φ125）、盘形插齿刀（φ160/φ200）自动选型
 - 大径/小径/齿厚/量棒距 M/公法线 Wk 智能软填充
 - 包络法刀坯计算、x₀ 许用区间推荐
