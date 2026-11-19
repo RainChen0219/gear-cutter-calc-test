@@ -558,6 +558,9 @@ input.invalid { border-color: var(--color-danger); background: var(--color-dange
   <div class="subtitle">内/外花键与齿轮 → 插齿刀选刀与成品刀参数</div>
   <details class="version-details">
     <summary>版本记录与修订日志（点击展开） <button type="button" onclick="event.preventDefault();openChangelog(true);" style="margin-left:8px;font-size:12px;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:2px 10px;cursor:pointer;">查看更新</button></summary>
+  <div class="subtitle"><b style="color:#1d4ed8;">【V1.2.0 · 滚刀本体参数（2026-11-19）】</b>
+  <b>新增 / 优化</b>：滚刀加工模式新增滚刀本体参数卡——主体（分度圆 d₀、螺旋升角 γ、容屑槽数 Zk、齿顶后角 αp、铲背量 K、容屑槽深 HK）、法向齿形（mn/αn/Pn/sn/ha₀/hf₀/h₀/齿顶圆角 ra）、轴向齿形（轴向齿距 Pax、轴向齿形角 αax、轴向齿厚 sax、导程 Pz）、精度等级（GB/T 6083）。高级选项新增「滚刀参数」输入（外径 da₀/全长 L/孔径 D/头数/容屑槽数/齿顶后角/前角/精度等级，滚刀模式显示）。<br>
+  <b>修复</b>：滚刀分支齿廓系数由硬编码改为复用主流程口径，标准号选「无（自定义齿廓/非标）」+ 手填 ha*/hf*/c* 可正确表达非标齿廓（如 ha*=0.967、c*=0.04），不再被标准默认系数覆盖。<br>
   <div class="subtitle"><b style="color:#1d4ed8;">【V1.1.1 · 外齿滚刀加工分支（2026-11-07）】</b>
   <b>新增 / 优化</b>：新增加工方式「滚刀」独立分支，支持外直齿轮/外花键滚刀加工，与插齿并列、复用同一套渐开线几何内核；输出工件完整参数、公法线与跨棒距、根切校验、滚刀配对、花键大小径五张卡。滚刀配对按标准号给出适用标准（GB/T 6083、GB/T 5104、DIN 3968、DIN 5480-16）、单头右旋、模数压力角严格匹配；内齿禁用滚刀并自动回退插齿，斜齿/螺旋角本版仅预留入口、暂不启用。<br>
   <b>修复</b>：30°花键量棒口径修正为按 2m 取标准量棒（与 GB/T 3478.1 附录、DIN 5480 算例一致），20°/25°沿用 1.68/1.75m；修复滚刀分支视图切换，切回插齿时完整恢复、不误伤原有隐藏卡片。<br>
@@ -644,6 +647,7 @@ input.invalid { border-color: var(--color-danger); background: var(--color-dange
     function refreshProcessMethod(){
       var gt=document.getElementById('gearType');
       var pm=document.getElementById('processMethod');
+      var hg=document.getElementById('hobParamsGroup');
       if(!gt||!pm) return;
       var hobOpt=pm.querySelector('option[value="hob"]');
       if(gt.value==='internal'){
@@ -652,6 +656,8 @@ input.invalid { border-color: var(--color-danger); background: var(--color-dange
       }else{
         hobOpt.disabled=false;
       }
+      // v1.2.0：滚刀参数组仅滚刀模式显示
+      if(hg) hg.style.display = (pm.value==='hob') ? 'block' : 'none';
     }
     document.getElementById('gearType').addEventListener('change',refreshProcessMethod);
     refreshProcessMethod();
@@ -1133,6 +1139,54 @@ input.invalid { border-color: var(--color-danger); background: var(--color-dange
     </div>
   </div>
     </fieldset>
+
+    <fieldset class="input-group" id="hobParamsGroup" style="display:none;">
+      <legend>滚刀参数（滚刀本体，滚刀模式必填）</legend>
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="hobDa0">滚刀外径 da₀ <span class="unit-tag">mm</span></label>
+          <input type="number" id="hobDa0" placeholder="如 80" step="any" inputmode="decimal">
+        </div>
+        <div class="form-group">
+          <label for="hobL">全长 L <span class="unit-tag">mm</span></label>
+          <input type="number" id="hobL" placeholder="如 80" step="any" inputmode="decimal">
+        </div>
+        <div class="form-group">
+          <label for="hobD">孔径 D <span class="unit-tag">mm</span></label>
+          <input type="number" id="hobD" placeholder="如 32" step="any" inputmode="decimal">
+        </div>
+        <div class="form-group">
+          <label for="hobZ0">头数 z₀ <span class="opt">（本版仅单头）</span></label>
+          <input type="number" id="hobZ0" placeholder="1" step="1" min="1" max="1" inputmode="numeric">
+        </div>
+        <div class="form-group">
+          <label for="hobZk">容屑槽数 Zk <span class="opt">（按模数档，m3=12）</span></label>
+          <input type="number" id="hobZk" placeholder="12" step="1" min="6" inputmode="numeric">
+        </div>
+        <div class="form-group">
+          <label for="hobAp">齿顶后角 αp <span class="unit-tag">°</span> <span class="opt">（8~12°）</span></label>
+          <input type="number" id="hobAp" placeholder="10" step="any" inputmode="decimal">
+        </div>
+        <div class="form-group">
+          <label for="hobRake">前角 <span class="opt">（精加工0°）</span></label>
+          <select id="hobRake">
+            <option value="0">0°（精加工）</option>
+            <option value="5">5°（粗加工）</option>
+            <option value="8">8°（粗加工）</option>
+            <option value="10">10°（粗加工）</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="hobGrade">精度等级 <span class="opt">（GB/T 6083）</span></label>
+          <select id="hobGrade">
+            <option value="AA">AA（工件4~5级）</option>
+            <option value="A">A（工件6~7级）</option>
+            <option value="B" selected>B（工件7~8级）</option>
+            <option value="C">C（粗加工）</option>
+          </select>
+        </div>
+      </div>
+    </fieldset>
   </details>
 
   <script>
@@ -1279,6 +1333,46 @@ input.invalid { border-color: var(--color-danger); background: var(--color-dange
       <div class="result-card" id="hobSplineCard" style="display:none;">
         <h3>花键大小径口径</h3>
         <div id="hob_spline_note" style="font-size:12px;line-height:1.7;"></div>
+      </div>
+
+      <div class="result-card recommend" id="hobBodyCard" style="display:none;">
+        <h3>滚刀本体参数（v1.2.0 · 仅外齿直齿）</h3>
+        <div id="hobbody_tip" style="display:none;font-size:13px;color:#b45309;background:#fef3c7;border:1px solid #fde68a;border-radius:4px;padding:6px 10px;margin:8px 0;">请填写滚刀规格（外径 da₀ 必填），见上方「高级选项 → 滚刀参数」。</div>
+        <div style="font-size:12px;font-weight:700;color:#475569;margin:12px 0 6px;">主体参数</div>
+        <div class="params-grid">
+          <div class="param-item"><div class="param-name">外径 × 全长 × 孔径（da₀×L×D）</div><div class="param-value"><span id="hobbody_da0"></span> × <span id="hobbody_L"></span> × <span id="hobbody_D"></span></div></div>
+          <div class="param-item"><div class="param-name">分度圆 d₀</div><div class="param-value" id="hobbody_d0"></div></div>
+          <div class="param-item"><div class="param-name">螺旋升角 γ</div><div class="param-value" id="hobbody_gamma"></div></div>
+          <div class="param-item"><div class="param-name">容屑槽数 Zk</div><div class="param-value" id="hobbody_Zk"></div></div>
+          <div class="param-item"><div class="param-name">齿顶后角 αp</div><div class="param-value" id="hobbody_ap"></div></div>
+          <div class="param-item"><div class="param-name">铲背量 K</div><div class="param-value" id="hobbody_K"></div></div>
+          <div class="param-item"><div class="param-name">容屑槽深 HK</div><div class="param-value" id="hobbody_HK"></div></div>
+          <div class="param-item"><div class="param-name">头数 z₀</div><div class="param-value" id="hobbody_z0"></div></div>
+          <div class="param-item"><div class="param-name">旋向</div><div class="param-value" id="hobbody_hand"></div></div>
+          <div class="param-item"><div class="param-name">前角</div><div class="param-value" id="hobbody_rake"></div></div>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:#475569;margin:12px 0 6px;">法向齿形</div>
+        <div class="params-grid">
+          <div class="param-item"><div class="param-name">法向模数 mn</div><div class="param-value" id="hobbody_mn"></div></div>
+          <div class="param-item"><div class="param-name">法向压力角 αn</div><div class="param-value" id="hobbody_an"></div></div>
+          <div class="param-item"><div class="param-name">法向齿距 Pn</div><div class="param-value" id="hobbody_Pn"></div></div>
+          <div class="param-item"><div class="param-name">法向齿厚 sn</div><div class="param-value" id="hobbody_sn"></div></div>
+          <div class="param-item"><div class="param-name">齿顶高 ha₀</div><div class="param-value" id="hobbody_ha0"></div></div>
+          <div class="param-item"><div class="param-name">齿根高 hf₀</div><div class="param-value" id="hobbody_hf0"></div></div>
+          <div class="param-item"><div class="param-name">全齿高 h₀</div><div class="param-value" id="hobbody_h0"></div></div>
+          <div class="param-item" style="grid-column:1/-1;"><div class="param-name">齿顶圆角 ra</div><div class="param-value" id="hobbody_ra"></div></div>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:#475569;margin:12px 0 6px;">轴向齿形（阿基米德蜗杆）</div>
+        <div class="params-grid">
+          <div class="param-item"><div class="param-name">轴向齿距 Pax</div><div class="param-value" id="hobbody_Pax"></div></div>
+          <div class="param-item"><div class="param-name">轴向齿形角 αax</div><div class="param-value" id="hobbody_ax"></div></div>
+          <div class="param-item"><div class="param-name">轴向齿厚 sax</div><div class="param-value" id="hobbody_sax"></div></div>
+          <div class="param-item"><div class="param-name">导程 Pz</div><div class="param-value" id="hobbody_Pz"></div></div>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:#475569;margin:12px 0 6px;">精度与切削（GB/T 6083-2016）</div>
+        <div class="params-grid">
+          <div class="param-item" style="grid-column:1/-1;"><div class="param-name">精度等级</div><div class="param-value" id="hobbody_grade"></div></div>
+        </div>
       </div>
     </div>
 
@@ -1487,7 +1581,7 @@ input.invalid { border-color: var(--color-danger); background: var(--color-dange
     </div>
   </div>
   <div class="page-footer">
-    配刀参数 · 插齿刀选刀与成品刀参数 v1.1.1<span style="font-weight:700;color:#b45309;">T</span> · 本工具全部计算在本地浏览器完成，不上传任何数据；结果仅供工程师选型参考，正式刀坯参数请与刀具厂汇签确认。<br>
+    配刀参数 · 插齿刀选刀与成品刀参数 v1.2.0<span style="font-weight:700;color:#b45309;">T</span> · 本工具全部计算在本地浏览器完成，不上传任何数据；结果仅供工程师选型参考，正式刀坯参数请与刀具厂汇签确认。<br>
     <span style="color:#b45309;">农历九月十九，以此为始，愿本工具为齿轮刀具从业者省去几分计算的繁琐。</span>
   </div>
 </div>
@@ -4020,7 +4114,13 @@ function computeHob(p){
   }else{
     coef=(Math.abs(alphaDeg-30)<0.01)?{ha:0.5,hf:0.75,c:0.25}:{ha:1.0,hf:1.25,c:0.25};
   }
+  // v1.2.0：齿廓系数复用，用户手填 ha*/hf*/c* 优先（与插齿主流程同口径）
+  var _haEl=document.getElementById('ha'), _hfEl=document.getElementById('hf'), _cEl=document.getElementById('cStar');
+  var _haIn=_haEl?_haEl.value.trim():'', _hfIn=_hfEl?_hfEl.value.trim():'', _cIn=_cEl?_cEl.value.trim():'';
+  if(_haIn!=='') coef.ha=parseFloat(_haIn);
+  if(_hfIn!=='') coef.hf=parseFloat(_hfIn);
   var haS=coef.ha, hfS=coef.hf;
+  var cS=(_cIn!=='')?parseFloat(_cIn):Math.max(hfS-haS,0);
   var alphaR=alphaDeg*Math.PI/180;
   var d=m*z;
   var db=d*Math.cos(alphaR);
@@ -4068,10 +4168,53 @@ function computeHob(p){
       pairNote='国标通用齿轮滚刀，基本齿廓按 GB/T 1356（ha*=1、c*=0.25、全齿高 2.25m）。';
     }
   }
-  return {m:m,z:z,alphaDeg:alphaDeg,x:x,std:std,rootType:rootType,coef:coef,
+  // v1.2.0：滚刀本体参数（读滚刀规格与头数/槽数/后角等，未填规格时为空）
+  var hobBody = computeHobBody({m:m, alphaDeg:alphaDeg, haS:haS, hfS:hfS, cS:cS});
+  return {m:m,z:z,alphaDeg:alphaDeg,x:x,std:std,rootType:rootType,coef:coef,cS:cS,
     d:d,db:db,pch:pch,s:s,ha:ha,hf:hf,da:da,df:df,h:h,k:k,wk:wk,
     Dp:Dp,dpTheoretical:dpTheoretical,M:M,zMin:zMin,xMinRoot:xMinRoot,
-    undercut:undercut,hobStd:hobStd,pairNote:pairNote,isSpline:isSpline};
+    undercut:undercut,hobStd:hobStd,pairNote:pairNote,isSpline:isSpline,hobBody:hobBody};
+}
+
+// v1.2.0 滚刀本体参数计算（仅外齿直齿单头右旋；法向=工件齿形，轴向=阿基米德蜗杆投影）
+function computeHobBody(o){
+  var m=o.m, alphaDeg=o.alphaDeg, haS=o.haS, hfS=o.hfS, cS=o.cS;
+  function gid(id){ var e=document.getElementById(id); return e?e.value.trim():''; }
+  var da0=parseFloat(gid('hobDa0')), L=parseFloat(gid('hobL')), D=parseFloat(gid('hobD'));
+  if(!(da0>0)) return null;  // 未填滚刀外径，不计算本体参数
+  var z0=parseInt(gid('hobZ0'))||1;
+  var Zk=parseInt(gid('hobZk'))||12;
+  var apDeg=parseFloat(gid('hobAp'))||10;
+  var rakeDeg=parseFloat(gid('hobRake'))||0;
+  var grade=gid('hobGrade')||'B';
+  var mn=m, alphaN=alphaDeg;
+  // 法向齿形（滚刀=齿条展成：齿顶高=工件齿根高+顶隙，齿根高=工件齿顶高）
+  var ha0=(haS+cS)*mn;
+  var hf0=haS*mn;
+  var h0=ha0+hf0;
+  var Pn=Math.PI*mn;
+  var sn=Pn/2;  // 精刀另加铲磨补偿 0.1~0.3
+  var ra=0.3*mn; // 齿顶圆角（非标顶隙按齿根过渡曲线复核）
+  // 主体
+  var d0=da0-2*ha0;
+  var sinG=mn*z0/d0;
+  var gamma=(Math.abs(sinG)>1)?null:Math.asin(sinG);
+  var gammaDeg=(gamma===null)?null:gamma*180/Math.PI;
+  var apR=apDeg*Math.PI/180;
+  var K=Math.PI*da0/Zk*Math.tan(apR);
+  var K1=K; // 侧铲背量近似取铲背量（精算需铲背量曲线，本版标注）
+  var HK=h0+(K+K1)/2+1.122;
+  // 轴向齿形（cosγ，直槽 γ≤5°）
+  var cosG=(gamma===null)?1:Math.cos(gamma);
+  var Pax=Pn/cosG;
+  var axDeg=Math.atan(Math.tan(alphaN*Math.PI/180)/cosG)*180/Math.PI;
+  var sax=sn/cosG;
+  var Pz=Pax*z0;
+  return {da0:da0,L:isFinite(L)?L:null,D:isFinite(D)?D:null,
+    z0:z0,Zk:Zk,apDeg:apDeg,rakeDeg:rakeDeg,grade:grade,
+    d0:d0,gammaDeg:gammaDeg,K:K,HK:HK,
+    mn:mn,alphaN:alphaN,Pn:Pn,sn:sn,ha0:ha0,hf0:hf0,h0:h0,ra:ra,
+    Pax:Pax,axDeg:axDeg,sax:sax,Pz:Pz};
 }
 
 function renderHobResult(r){
@@ -4107,6 +4250,27 @@ function renderHobResult(r){
       +'标准表按实际刀具齿形与公差带取值，可能与理论值略有差异（如圆齿根小径），做刀与检测请以标准表/图纸为准。';
   }else{
     sc.style.display='none';
+  }
+  // v1.2.0：滚刀本体参数卡
+  var hb=r.hobBody, hbCard=document.getElementById('hobBodyCard'), hbTip=document.getElementById('hobbody_tip');
+  if(hbCard){
+    hbCard.style.display='block';
+    if(hb){
+      if(hbTip) hbTip.style.display='none';
+      set('hobbody_da0',_hobF(hb.da0,3)); set('hobbody_L',_hobF(hb.L,3)); set('hobbody_D',_hobF(hb.D,3));
+    set('hobbody_d0',_hobF(hb.d0,3)); set('hobbody_gamma',hb.gammaDeg===null?'—':_hobF(hb.gammaDeg,4)+'°');
+    set('hobbody_Zk',hb.Zk); set('hobbody_ap',_hobF(hb.apDeg,2)+'°'); set('hobbody_K',_hobF(hb.K,3));
+    set('hobbody_HK',_hobF(hb.HK,3)); set('hobbody_z0',hb.z0); set('hobbody_rake',_hobF(hb.rakeDeg,1)+'°'); set('hobbody_hand','右旋（直齿）');
+    set('hobbody_mn',_hobF(hb.mn,4)); set('hobbody_an',_hobF(hb.alphaN,4)+'°'); set('hobbody_Pn',_hobF(hb.Pn,4));
+    set('hobbody_sn',_hobF(hb.sn,4)); set('hobbody_ha0',_hobF(hb.ha0,4)); set('hobbody_hf0',_hobF(hb.hf0,4));
+    set('hobbody_h0',_hobF(hb.h0,4)); set('hobbody_ra',_hobF(hb.ra,3)+'（非标顶隙按齿根过渡曲线复核）');
+    set('hobbody_Pax',_hobF(hb.Pax,4)); set('hobbody_ax',_hobF(hb.axDeg,4)+'°'); set('hobbody_sax',_hobF(hb.sax,4)); set('hobbody_Pz',_hobF(hb.Pz,4));
+    var _gradeMap={AA:'AA（工件4~5级）',A:'A（工件6~7级）',B:'B（工件7~8级）',C:'C（粗加工）'};
+    set('hobbody_grade',_gradeMap[hb.grade]||hb.grade);
+    }else{
+      if(hbTip) hbTip.style.display='block';
+      ['hobbody_da0','hobbody_L','hobbody_D','hobbody_d0','hobbody_gamma','hobbody_Zk','hobbody_ap','hobbody_K','hobbody_HK','hobbody_z0','hobbody_hand','hobbody_rake','hobbody_mn','hobbody_an','hobbody_Pn','hobbody_sn','hobbody_ha0','hobbody_hf0','hobbody_h0','hobbody_ra','hobbody_Pax','hobbody_ax','hobbody_sax','hobbody_Pz','hobbody_grade'].forEach(function(id){ var el=document.getElementById(id); if(el) el.textContent='—'; });
+    }
   }
 }
 // ================= v1.1.1 滚刀分支结束 =================
@@ -5758,8 +5922,15 @@ function _doCalculate() {
  *    内容变了（新增修复）就再弹一次，内容没变不再打扰。
  *  - 跨版本：用户上次看到版本之后新发布的所有版本，连同未发布内容一并展示。
  */
-const APP_VERSION = '1.1.1';
+const APP_VERSION = '1.2.0';
 const RELEASED_LOG = [
+  { version:'1.2.0', date:'2026-11-19', features:[
+      '滚刀加工模式新增滚刀本体参数：主体（d₀/γ/Zk/αp/K/HK）、法向齿形（mn/αn/Pn/sn/ha₀/hf₀/h₀/ra）、轴向齿形（Pax/αax/sax/Pz）、精度等级',
+      '新增滚刀规格输入：外径 da₀、全长 L、孔径 D、头数、容屑槽数、齿顶后角、前角、精度等级（高级选项·滚刀参数，滚刀模式显示）',
+      '滚刀齿廓系数复用：标准号选「无（自定义齿廓/非标）」+ 手填 ha*/hf*/c*，支持非标齿廓（如 ha*=0.967、c*=0.04）',
+    ], fixes:[
+      '滚刀分支齿廓系数由硬编码改为复用主流程口径，非标齿廓不再被标准默认系数覆盖',
+    ]},
   { version:'1.1.1', date:'2026-11-07', features:[
       '新增加工方式「滚刀」独立分支：支持外直齿轮/外花键滚刀加工，与插齿并列，复用同一套渐开线几何内核',
       '五张结果卡：工件完整参数、公法线与跨棒距、根切校验、滚刀配对、花键大小径',
