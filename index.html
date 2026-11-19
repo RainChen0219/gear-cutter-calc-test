@@ -4149,7 +4149,9 @@ function computeHob(p){
   var xMinRoot=haS-z*sinA*sinA/2;
   var undercut=x<xMinRoot-1e-9;
   var isDIN=(std==='DIN 867'||std==='DIN 5480');
-  var isSpline=(Math.abs(alphaDeg-30)<0.01);
+  // v1.2.1：花键配对按标准号判定；α=30°仅在未选/无标准时兜底。
+  // 25°三个 AGMA 标准为齿轮齿形（AGMA 201.02 粗齿距、AGMA 1003 细齿距），非花键，不因角度误判。
+  var isSpline=(std==='GB/T 3478.1'||std==='DIN 5480')||((!std||std==='none'||std==='无标准（自定义齿廓）')&&Math.abs(alphaDeg-30)<0.01);
   var hobStd, pairNote;
   if(isSpline){
     if(isDIN){
@@ -4165,7 +4167,7 @@ function computeHob(p){
       pairNote='德标齿轮滚刀，配对 ISO 53 基本齿廓（cP=0.25、QfP=0.38m）。';
     }else{
       hobStd='GB/T 6083';
-      pairNote='国标通用齿轮滚刀，基本齿廓按 GB/T 1356（ha*=1、c*=0.25、全齿高 2.25m）。';
+      pairNote='国标通用齿轮滚刀，基本齿廓按 GB/T 1356（ha*=1、c*=0.25、工件全齿高 2.25m、滚刀全齿高 2.5m）。';
     }
   }
   // v1.2.0：滚刀本体参数（读滚刀规格与头数/槽数/后角等，未填规格时为空）
@@ -4188,24 +4190,25 @@ function computeHobBody(o){
   var rakeDeg=parseFloat(gid('hobRake'))||0;
   var grade=gid('hobGrade')||'B';
   var mn=m, alphaN=alphaDeg;
-  // 法向齿形（滚刀=齿条展成：齿顶高=工件齿根高+顶隙，齿根高=工件齿顶高）
+  // 法向齿形（滚刀=齿条展成，法向为对称基本齿条）
+  // 齿顶高=工件齿根高+顶隙；齿根高=工件齿顶高+顶隙（v1.2.1 修正：原缺顶隙档，致全齿高 2.25m 与 GB/T 6083 标准滚刀 2.5m 不符）
   var ha0=(haS+cS)*mn;
-  var hf0=haS*mn;
+  var hf0=(haS+cS)*mn;
   var h0=ha0+hf0;
   var Pn=Math.PI*mn;
   var sn=Pn/2;  // 精刀另加铲磨补偿 0.1~0.3
   var ra=0.3*mn; // 齿顶圆角（非标顶隙按齿根过渡曲线复核）
   // 主体
   var d0=da0-2*ha0;
-  var sinG=mn*z0/d0;
-  var gamma=(Math.abs(sinG)>1)?null:Math.asin(sinG);
-  var gammaDeg=(gamma===null)?null:gamma*180/Math.PI;
+  // v1.2.1：γ 按精确定义 tanγ=mn·z₀/d₀ 用 atan（原 asin 在 |arg|>1 时会静默失效并输出错误轴向参数）
+  var gamma=Math.atan(mn*z0/d0);
+  var gammaDeg=gamma*180/Math.PI;
   var apR=apDeg*Math.PI/180;
   var K=Math.PI*da0/Zk*Math.tan(apR);
-  var K1=K; // 侧铲背量近似取铲背量（精算需铲背量曲线，本版标注）
-  var HK=h0+(K+K1)/2+1.122;
+  var K1=K; // 侧铲背量近似取径向铲背量（精算需铲背量曲线，本版为近似值）
+  var HK=h0+(K+K1)/2+1.122; // +1.122 为经验附加量（来源待复核，非标准公式；精算按厂标工艺留量）
   // 轴向齿形（cosγ，直槽 γ≤5°）
-  var cosG=(gamma===null)?1:Math.cos(gamma);
+  var cosG=Math.cos(gamma);
   var Pax=Pn/cosG;
   var axDeg=Math.atan(Math.tan(alphaN*Math.PI/180)/cosG)*180/Math.PI;
   var sax=sn/cosG;
@@ -4258,9 +4261,20 @@ function renderHobResult(r){
     if(hb){
       if(hbTip) hbTip.style.display='none';
       set('hobbody_da0',_hobF(hb.da0,3)); set('hobbody_L',_hobF(hb.L,3)); set('hobbody_D',_hobF(hb.D,3));
-    set('hobbody_d0',_hobF(hb.d0,3)); set('hobbody_gamma',hb.gammaDeg===null?'—':_hobF(hb.gammaDeg,4)+'°');
+    set('hobbody_d0',_hobF(hb.d0,3));
+    if(hb.gammaDeg!==null && hb.gammaDeg>5){
+      document.getElementById('hobbody_gamma').innerHTML=_hobF(hb.gammaDeg,4)+'° <span style="color:#b45309;font-size:10px;font-weight:600;">⚠ γ&gt;5°，直槽阿基米德近似偏差增大，轴向齿形建议按空间螺旋面复核</span>';
+    }else{
+      set('hobbody_gamma',hb.gammaDeg===null?'—':_hobF(hb.gammaDeg,4)+'°');
+    }
     set('hobbody_Zk',hb.Zk); set('hobbody_ap',_hobF(hb.apDeg,2)+'°'); set('hobbody_K',_hobF(hb.K,3));
-    set('hobbody_HK',_hobF(hb.HK,3)); set('hobbody_z0',hb.z0); set('hobbody_rake',_hobF(hb.rakeDeg,1)+'°'); set('hobbody_hand','右旋（直齿）');
+    set('hobbody_HK',_hobF(hb.HK,3)); set('hobbody_z0',hb.z0);
+    if(hb.rakeDeg!==0){
+      document.getElementById('hobbody_rake').innerHTML=_hobF(hb.rakeDeg,1)+'° <span style="color:#b45309;font-size:10px;font-weight:600;">⚠ 前角≠0°，齿形角需按 tanα₀=tanαw/(1−tanγ·tanαe) 修正，轴向齿形角当前按前角 0° 给出</span>';
+    }else{
+      set('hobbody_rake',_hobF(hb.rakeDeg,1)+'°');
+    }
+    set('hobbody_hand','右旋（直齿）');
     set('hobbody_mn',_hobF(hb.mn,4)); set('hobbody_an',_hobF(hb.alphaN,4)+'°'); set('hobbody_Pn',_hobF(hb.Pn,4));
     set('hobbody_sn',_hobF(hb.sn,4)); set('hobbody_ha0',_hobF(hb.ha0,4)); set('hobbody_hf0',_hobF(hb.hf0,4));
     set('hobbody_h0',_hobF(hb.h0,4)); set('hobbody_ra',_hobF(hb.ra,3)+'（非标顶隙按齿根过渡曲线复核）');
@@ -4472,7 +4486,7 @@ function _doCalculate() {
   }
   // 工程范围提示（C6-6）：避免 1e9 荒谬尺寸静默出数
   if (m > 50 || m < 0.5) {
-    showInputError(`模数 m=${m} 超出常见插齿刀范围（约 0.5~50mm）。若确为非标/英制，请核对单位；否则请修正。`); return;
+    showInputError(`模数 m=${m} 超出常见范围（插齿刀约 0.5~50mm，齿轮滚刀 GB/T 6083 为 0.5~40mm）。若确为非标/英制，请核对单位；否则请修正。`); return;
   }
   if (z > 2000) {
     showInputError(`齿数 z=${z} 过大（常见内齿圈 <2000）。请核对输入。`); return;
@@ -4574,16 +4588,17 @@ function _doCalculate() {
   let dpMismatchNote = '';
   // 仅配刀模式且用户未手填名义变位：由图纸公称M反推名义变位 x（公称M才是齿坯/名义齿厚基准；单值目标M含侧隙，不能反推名义x）；
   // 手填Dp与公称M矛盾时不反推，避免用错误量棒得到虚高变位
+  let _mSolveFail = false; // v1.2.1：M 与 Dp 几何不自洽（solveXFromM 返回 null）时提示，避免静默回退名义值
   if (!xUserFilled && hasMtol && MInput !== null && DpEff !== null && !dpMismatchNote) {
     const sn = solveXFromM(m, z, alphaDeg, MInput, DpEff, isInternal);
-    if (sn) x = sn.x;
+    if (sn) x = sn.x; else _mSolveFail = true;
   }
   // 制造变位 x₁ 由 M 反推：配刀模式用公差带中值（做刀目标），单值模式用输入M；Dp矛盾时不反推
   let xFromM = null;
   if (MInput !== null && DpEff !== null && !dpMismatchNote) {
     const targetM = hasMtol ? MdrawMid : MInput;
     const solve = solveXFromM(m, z, alphaDeg, targetM, DpEff, isInternal);
-    if (solve) xFromM = solve.x;
+    if (solve) xFromM = solve.x; else _mSolveFail = true;
   }
   // 配刀模式：制造变位 x₁ 的公差带（由 M 上/下极限反推；Dp矛盾时不反推）
   let x1Lo = null, x1Hi = null;
@@ -5816,7 +5831,7 @@ function _doCalculate() {
     if (hasMtol) {
       document.getElementById('dw_M').textContent = MdrawMid.toFixed(3) + ' mm（配刀目标·中值；图纸公称 ' + MInput.toFixed(3) + '，带 ' + MdrawLo.toFixed(3) + '~' + MdrawHi.toFixed(3) + '）';
     } else if (MInput !== null) {
-      document.getElementById('dw_M').textContent = MInput.toFixed(3) + ' mm（输入）';
+      document.getElementById('dw_M').textContent = MInput.toFixed(3) + ' mm（输入）' + (_mSolveFail ? ' ⚠ 该 M 与量棒 Dp 组合几何不成立（低于理论下限），未参与变位反推' : '');
     } else {
       const _xForM = xFromM !== null ? xFromM : (xFromW !== null ? xFromW : x);
       const _mResult = isInternal ? ballMeasurementInternal(m, z, alphaDeg, _xForM, _dp) : ballMeasurementExternal(m, z, alphaDeg, _xForM, _dp);
@@ -5922,7 +5937,7 @@ function _doCalculate() {
  *    内容变了（新增修复）就再弹一次，内容没变不再打扰。
  *  - 跨版本：用户上次看到版本之后新发布的所有版本，连同未发布内容一并展示。
  */
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.2.1';
 const RELEASED_LOG = [
   { version:'1.2.0', date:'2026-11-19', features:[
       '滚刀加工模式新增滚刀本体参数：主体（d₀/γ/Zk/αp/K/HK）、法向齿形（mn/αn/Pn/sn/ha₀/hf₀/h₀/ra）、轴向齿形（Pax/αax/sax/Pz）、精度等级',
@@ -5992,7 +6007,14 @@ const RELEASED_LOG = [
       '修复公法线填反时变位静默回退',
     ]},
 ];
-const PENDING_LOG = { version:'', date:'', features:[], fixes:[] };
+const PENDING_LOG = { version:'1.2.1', date:'2026-11-19', features:[], fixes:[
+  '修复滚刀齿根高 hf₀ 缺顶隙档：hf₀=(ha*+c*)·m（原 ha*·m），标准齿轮滚刀全齿高恢复 2.5m，与 GB/T 6083/GB/T 1356 一致',
+  '滚刀配对由「α=30° 即花键」改为按标准号判定（GB/T 3478.1/DIN 5480），α=30° 仅作未选标准时兜底',
+  '滚刀螺旋升角 γ 改用精确 atan 定义（原 asin 越界时静默输出错误轴向参数）',
+  'γ>5°、前角≠0° 时输出橙色警示（直槽近似/齿形角修正提示），不再静默',
+  '量棒距 M 与 Dp 几何不自洽时提示「未参与变位反推」，不再静默回退名义值',
+  '模数范围报错文案按加工方式分流（滚刀 GB/T 6083 为 0.5~40mm）',
+] };
 
 function _verParts(v){
   var m = String(v).replace(/[^0-9.]/g,'').split('.').map(function(n){return parseInt(n||'0',10);});
