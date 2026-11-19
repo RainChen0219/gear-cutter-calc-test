@@ -1307,6 +1307,7 @@ input.invalid { border-color: var(--color-danger); background: var(--color-dange
 
       <div class="result-card">
         <h3>公法线 / 跨棒距（外齿测量）</h3>
+        <div id="hob_measure_note" style="display:none;font-size:12px;line-height:1.6;color:#b45309;background:#fef3c7;border:1px solid #fde68a;border-radius:4px;padding:6px 10px;margin:8px 0;"></div>
         <div class="params-grid">
           <div class="param-item"><div class="param-name">跨齿数 k</div><div class="param-value" id="hob_k"></div></div>
           <div class="param-item"><div class="param-name">公法线 Wk</div><div class="param-value" id="hob_wk"></div></div>
@@ -4131,7 +4132,8 @@ function computeHob(p){
   var da=d+2*ha;
   var df=d-2*hf;
   var h=ha+hf;
-  var k=commonNormalTeeth(m,z,alphaDeg);
+  // v1.2.1：跨齿数优先用用户输入（Wk 反推场景 k 与理论值可能不同，如 m3z42 k=6），未填时用理论值
+  var k=(p.k && p.k>=1) ? p.k : commonNormalTeeth(m,z,alphaDeg);
   var wk=wkFromX(m,z,alphaDeg,x,k);
   // 滚刀专用量棒：30°花键按标准惯例取 2m 对应标准量棒（GB/T3478.1附录、DIN5480算例均用2m）；
   // 20/25°沿用理论系数（1.68/1.75m），再从 BALL_STD_SERIES 取最接近标准值
@@ -4175,7 +4177,8 @@ function computeHob(p){
   return {m:m,z:z,alphaDeg:alphaDeg,x:x,std:std,rootType:rootType,coef:coef,cS:cS,
     d:d,db:db,pch:pch,s:s,ha:ha,hf:hf,da:da,df:df,h:h,k:k,wk:wk,
     Dp:Dp,dpTheoretical:dpTheoretical,M:M,zMin:zMin,xMinRoot:xMinRoot,
-    undercut:undercut,hobStd:hobStd,pairNote:pairNote,isSpline:isSpline,hobBody:hobBody};
+    undercut:undercut,hobStd:hobStd,pairNote:pairNote,isSpline:isSpline,hobBody:hobBody,
+    measureNote:p.measureNote||''};
 }
 
 // v1.2.0 滚刀本体参数计算（仅外齿直齿单头右旋；法向=工件齿形，轴向=阿基米德蜗杆投影）
@@ -4233,6 +4236,12 @@ function renderHobResult(r){
   set('hob_k',r.k); set('hob_wk',_hobF(r.wk,3));
   set('hob_dp',_hobF(r.Dp,2)+'（理论 '+_hobF(r.dpTheoretical,2)+'）');
   set('hob_M',r.M==null?'—':_hobF(r.M,3));
+  // v1.2.1：测量反推提示（齿厚/跨棒距/公法线反推 x₁ 时显示来源与结果）
+  var _mnEl=document.getElementById('hob_measure_note');
+  if(_mnEl){
+    if(r.measureNote){ _mnEl.style.display=''; _mnEl.textContent=r.measureNote; }
+    else _mnEl.style.display='none';
+  }
   var uc=document.getElementById('hob_undercut');
   if(r.undercut){
     uc.innerHTML='<span style="color:#b91c1c;">⚠️ 会根切：当前变位 x='+_hobF(r.x,3)+' 低于不根切最小变位 x_min='+_hobF(r.xMinRoot,3)+'。</span><br>'
@@ -4503,8 +4512,46 @@ function _doCalculate() {
     if (type === 'internal') {
       showInputError('内齿（内齿圈/内花键）不能用滚刀加工，请把加工方式改为「插齿」。'); return;
     }
+    // v1.2.1：滚刀模式接入测量反推（此前静默忽略齿厚/跨棒距/公法线输入，工件按名义 x 计算）。
+    // 优先级与插齿一致：齿厚 s > 跨棒距 M > 公法线 Wk；反推失败按名义 x 并在结果卡提示。
+    let xEffHob = x;
+    let hobMeasureNote = '';
+    const _tanA = Math.tan(alphaDeg * Math.PI / 180);
+    if (sInput !== null && sInput > 0) {
+      const _xs = (sInput / m - Math.PI / 2) / (2 * _tanA);
+      xEffHob = _xs;
+      hobMeasureNote = '工件参数按分圆弧齿厚 s=' + sInput + 'mm 反推变位 x₁=' + _xs.toFixed(4) + ' 计算。';
+    } else if (MInput !== null && DpInput !== null) {
+      const _sm = solveXFromM(m, z, alphaDeg, MInput, DpInput, false);
+      if (_sm) {
+        xEffHob = _sm.x;
+        hobMeasureNote = '工件参数按跨棒距 M=' + MInput + 'mm（Dp=' + DpInput + '）反推变位 x₁=' + _sm.x.toFixed(4) + ' 计算。';
+      } else {
+        hobMeasureNote = '⚠ 跨棒距 M 与量棒 Dp 组合几何不成立，已按名义 x 计算，请核对 M/Dp。';
+      }
+    } else if (WkInput !== null) {
+      const _kTheory = alphaDeg * z / 180 + 0.5;
+      if (kNormal >= 1 && kNormal <= z + 1 && Math.abs(kNormal - _kTheory) <= 2) {
+        const _xw = solveXFromWk(m, z, alphaDeg, WkInput, kNormal);
+        if (isFinite(_xw) && Math.abs(_xw) <= 2) {
+          xEffHob = _xw;
+          hobMeasureNote = '工件参数按公法线 Wk=' + WkInput + 'mm（k=' + kNormal + '）反推变位 x₁=' + _xw.toFixed(4) + ' 计算。';
+        } else {
+          hobMeasureNote = '⚠ 公法线 Wk 反推越界（|x₁|>2），已按名义 x 计算，请核对 Wk/k 输入。';
+        }
+      } else {
+        hobMeasureNote = '⚠ 跨齿数 k 超出合理范围（理论约 ' + _kTheory.toFixed(1) + '），公法线未参与反推，按名义 x 计算。';
+      }
+    }
     const rootTypeHob = document.getElementById('rootType') ? document.getElementById('rootType').value : 'flat';
-    const hobRes = computeHob({m:m, z:z, alphaDeg:alphaDeg, x:x, standardNo:standardNo, rootType:rootTypeHob});
+    const hobRes = computeHob({m:m, z:z, alphaDeg:alphaDeg, x:xEffHob, k:kNormal, standardNo:standardNo, rootType:rootTypeHob, measureNote:hobMeasureNote});
+    // v1.2.1：齿廓系数/滚刀外径合理性拦截（此前 c*<0、da₀ 过小会静默输出荒谬值）
+    if (hobRes.coef.ha <= 0 || hobRes.cS < 0 || (hobRes.ha + hobRes.hf) <= 0) {
+      showInputError('齿廓系数异常：齿顶高系数 ha*=' + hobRes.coef.ha + '、顶隙 c*=' + hobRes.cS + '（须 ha*>0、c*≥0）。请核对「高级选项」齿廓系数输入。'); return;
+    }
+    if (hobRes.hobBody && hobRes.hobBody.d0 <= 0) {
+      showInputError('滚刀外径 da₀ 过小：按齿顶高 ha₀ 反推分度圆 d₀=' + hobRes.hobBody.d0.toFixed(3) + 'mm ≤ 0，滚刀外径应 > 2·ha₀。请核对滚刀规格。'); return;
+    }
     renderHobResult(hobRes);
     return;
   }
@@ -6014,6 +6061,10 @@ const PENDING_LOG = { version:'1.2.1', date:'2026-11-19', features:[], fixes:[
   'γ>5°、前角≠0° 时输出橙色警示（直槽近似/齿形角修正提示），不再静默',
   '量棒距 M 与 Dp 几何不自洽时提示「未参与变位反推」，不再静默回退名义值',
   '模数范围报错文案按加工方式分流（滚刀 GB/T 6083 为 0.5~40mm）',
+  '滚刀模式接入测量反推：分圆弧齿厚 s / 跨棒距 M / 公法线 Wk 任一输入即反推实际变位 x₁ 参与工件与滚刀计算（此前静默忽略，工件按名义 x 计算），结果卡显示反推来源',
+  '滚刀模式跨齿数 k 优先取用户输入（Wk 反推场景 k≠理论值），未填时才用理论值',
+  '齿廓系数异常拦截：ha*≤0 或 c*<0 时提示并停止计算（兑现技术方案 3.19.5 承诺）',
+  '滚刀外径过小拦截：da₀≤2·ha₀ 致分度圆 d₀≤0 时提示并停止计算（此前静默输出负 d₀、负 γ）',
 ] };
 
 function _verParts(v){
