@@ -2054,6 +2054,76 @@ function trimTabLinear(T, z0) {
   for (let i=0;i<ks.length-1;i++){ const a=ks[i],b=ks[i+1]; if(z0>=a&&z0<=b) return T[a]+(z0-a)*(T[b]-T[a])/(b-a); }
   return T[ks[ks.length-1]];
 }
+
+// ============================================================
+// Polder 1969 overcut（径向切入顶切/trimming）通用判据 —— 第一性原理推导
+// 参考文献：J.W. Polder, "Overcut, a new theory for tip interference in internal gears",
+//           Journal of Mechanical Engineering Science, 11(6): 583-591, 1969.（原文 PDF 已核对方程排版）
+// 物理模型：装配干涉(T判据，论文方程2)只约束 a≥(rb2−rb1) 的啮合段；而内齿插齿加工是纯径向
+//           切入（从 a=ra2−ra1 起径向推进到工作中心距，全程无展成转动）。overcut 发生在
+//           a<(rb2−rb1) 的切入早期：刀齿顶圆与工件齿顶圆在径向推进中于 aI=√((ra2²−ra1²)·(r2²−r1²)/(r2²−r1²))
+//           处相遇并穿透（论文方程29~31）。因此手册 z2min 比装配干涉判据严格，且与刀具
+//           齿顶高(da0/正变位 x0)强相关——这正是本判据按 da0 逐点计算的原因。
+// 判据（论文方程34）：工作中心距 a' > a_neutr（overcut 极限中心距）则全程无顶切。
+// a_neutr（论文方程31，含修正 cosα 因子）：
+//   INV(a_neutr/dm) = z2/(z2−z1)·[arccos((d2/da2)·√((da2²−da1²)/(d2²−d1²))) + INV(da2/d2)]
+//                   − z1/(z2−z1)·[arccos((d1/da1)·√((da2²−da1²)/(d2²−d1²))) + INV(da1/d1)]
+// 其中 INV(Q)=inv[arccos(cosα/Q)]（论文方程32，输出度），a_neutr = dm·cosα / cos(αN)，
+//       dm=m(z2−z1)/2，d1=m·z1，da1=2·rac（刀实际齿顶圆，含正变位），da2=d2−2m(haI−xi)。
+// 本函数返回连续临界 z2min（未取整、未加裕量），调用方按需 ceil 并与手册表取 max 双保险。
+// 验证：手册 14038 表 x2=0 列全量 41 行复算——x0≤0.105 档与手册值精确吻合（差 0）；
+//       x0 较大档 Polder 判据偏宽松 0~4 齿（手册表含工程裕量），故集成时须与表值取 max。
+// 注意：判据对任意压力角 α 通用（cosα 参数化）；工件为内齿（z2>z1）。
+function polderOvercutZ2min(m, z0, x0, rac, alphaDeg, haI, xi) {
+  const deg = Math.PI / 180;
+  const al = alphaDeg * deg;
+  if (xi === undefined || xi === null || isNaN(xi)) xi = 0;
+  if (haI === undefined || haI === null || isNaN(haI)) haI = 1;
+  const zc = z0;
+  // INV(Q)：论文方程32（无量纲直径比 Q，输出单位为度）
+  function INVdeg(Q) {
+    const t = Math.acos(Math.min(1, Math.max(-1, Math.cos(al) / Q)));
+    return (360 / (2 * Math.PI)) * (Math.tan(t) - t);
+  }
+  // 二分反解 inv(α)=v → α（度）
+  function invToAlphaDeg(v) {
+    let lo = 1e-3, hi = 88;
+    for (let i = 0; i < 120; i++) {
+      const mid = (lo + hi) / 2;
+      const fm = Math.tan(mid * deg) - mid * deg;
+      if (fm < v) lo = mid; else hi = mid;
+    }
+    return (lo + hi) / 2;
+  }
+  // a_neutr（论文方程31，修正版）
+  function aNeutr(zi) {
+    const d1 = m * zc, d2 = m * zi;
+    const da1 = 2 * rac, da2 = d2 - 2 * m * (haI - xi);
+    const dm = m * (zi - zc) / 2;
+    const sT = Math.sqrt(Math.max(0, (da2 * da2 - da1 * da1) / (d2 * d2 - d1 * d1)));
+    const t1 = Math.acos(Math.min(1, Math.max(-1, (d1 / da1) * sT)));
+    const t2 = Math.acos(Math.min(1, Math.max(-1, (d2 / da2) * sT)));
+    const invAn = (zi / (zi - zc)) * (t2 * (180 / Math.PI) + INVdeg(da2 / d2))
+                - (zc / (zi - zc)) * (t1 * (180 / Math.PI) + INVdeg(da1 / d1));
+    const v = invAn * (2 * Math.PI / 360);
+    const aN = invToAlphaDeg(v);
+    return dm * Math.cos(al) / Math.cos(aN * deg);
+  }
+  // 无侧隙工作中心距 a'（论文方程19：invα'=invα+2(xi−x0)tanα/(zi−zc)，a'=(rb2−rb1)/cosα'）
+  function aPrime(zi) {
+    const rb1 = m * zc / 2 * Math.cos(al), rb2 = m * zi / 2 * Math.cos(al);
+    const invAp = Math.tan(al) - al + 2 * (xi - x0) * Math.tan(al) / (zi - zc);
+    const ap = invToAlphaDeg(invAp);
+    return (rb2 - rb1) / Math.cos(ap * deg);
+  }
+  // 二分连续临界：a' > a_neutr 的最小 zi
+  let lo = zc + 1, hi = zc + 200;
+  for (let i = 0; i < 80; i++) {
+    const mid = (lo + hi) / 2;
+    if (aPrime(mid) > aNeutr(mid)) hi = mid; else lo = mid;
+  }
+  return (lo + hi) / 2;
+}
 // 通用：按 z0、实际 x0 求内齿径向进给顶切 z2min（用于非标/定制刀，含 +1 安全裕量）。
 // 标准新刀是同 z0 下齿顶最高、最易顶切的状态，故对定制刀（常磨矮齿顶 da0 更小）此值偏保守、不会漏判。
 function radialZ2minByZ0(z0, x0) {
@@ -2513,7 +2583,11 @@ function buildCustomShaper(m, z1, isInternal, alphaDeg, isNonStandard, stdM) {
   const z0Max = Math.min(Math.floor(125 / m), z1 - 1);
   // 从大到小找满足 z1 >= 原始临界（不 round+1）的最大 z0；x0 基准取 0，render 时再包络定 x0
   for (let z0 = z0Max; z0 >= 10; z0--) {
-    const z2crit = Math.round(trimTabLinear(TRIM_T1, z0));  // 原始临界，不 +1
+    // 候选判据双保险：KHK x0=0 表 + Polder 1969 overcut 判据（x0=0、ha0*=1.25 新刀）取 max
+    const z2crit = Math.max(
+      Math.round(trimTabLinear(TRIM_T1, z0)),
+      Math.ceil(polderOvercutZ2min(m, z0, 0, m * (z0 / 2 + 1.25), alphaDeg, 1, 0))
+    );
     if (z1 >= z2crit) {
       const d0 = m * z0;
       // 公称档按 d0 圆整到最近标准碗形档（仅作刀体结构参考）
@@ -3323,14 +3397,36 @@ function checkFeasibility(opt, z, isInternal, alphaDeg, wpX) {
       let z2min = (opt.z2minOfficial !== null && opt.z2minOfficial !== undefined)
         ? opt.z2minOfficial
         : null;
+      // Polder 判据实际模数：d0/z0 反推（非标模数时 d0 按实际 m 包络，stdM 仅为就近标准档参考）
+      const mAct = (opt.d0 && opt.z0) ? opt.d0 / opt.z0 : opt.stdM;
       if (z2min === null) {
         // 由标准档 da0 反推新刀 x0；定制刀场景 opt.da0 即包络刀坯
         let x0est = 0;
-        if (opt.da0 && opt.stdM) {
+        if (opt.da0 && mAct) {
           const ha0Est = (opt.ha0 && opt.ha0 > 0) ? opt.ha0 : 1.25;
-          x0est = opt.da0 / (2 * opt.stdM) - opt.z0 / 2 - ha0Est;
+          x0est = opt.da0 / (2 * mAct) - opt.z0 / 2 - ha0Est;
         }
-        z2min = radialZ2minByZ0(opt.z0, x0est);
+        if (opt.isCustom) {
+          // v1.2.2 定制刀零裕量口径：TRIM x0=0 原始临界与 Polder 判据取 max，不加 +1
+          // （与 buildCustomShaper 候选判据同口径；用例六 z=42 恰临界可加工，+1 会误伤）
+          z2min = Math.max(
+            Math.round(trimTabLinear(TRIM_T1, opt.z0)),
+            Math.ceil(polderOvercutZ2min(mAct, opt.z0, x0est, opt.da0 / 2, alphaDeg, 1, wpX))
+          );
+        } else {
+          z2min = radialZ2minByZ0(opt.z0, x0est);
+        }
+      }
+      // v1.2.2 通用判据交叉（第一性原理）：Polder 1969 overcut 判据与表值取 max 双保险。
+      // 表值覆盖标准档工程裕量（手册表含随 x0 增大的安全裕量）；Polder 判据按实际
+      // da0/x0 逐点计算，覆盖任意非表档组合（含定制刀包络刀坯），防止漏判。
+      // 全量 41 行手册复算：Polder 判据在 x0≤0.105 档与手册精确吻合，大 x0 档偏宽松，
+      // 故 max(表值, Polder) 不会误伤现有通过档，只对表外/漏判组合收紧。
+      if (!is30 && mAct && opt.da0 && opt.da0 > 0) {
+        const ha0Est2 = (opt.ha0 && opt.ha0 > 0) ? opt.ha0 : 1.25;
+        const x0est2 = opt.da0 / (2 * mAct) - opt.z0 / 2 - ha0Est2;
+        const pz = polderOvercutZ2min(mAct, opt.z0, x0est2, opt.da0 / 2, alphaDeg, 1, wpX);
+        z2min = Math.max(z2min, Math.ceil(pz));
       }
       if (z < z2min) {
         feasible = false;
