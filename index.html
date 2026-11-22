@@ -558,6 +558,9 @@ input.invalid { border-color: var(--color-danger); background: var(--color-dange
   <div class="subtitle">内/外花键与齿轮 → 插齿刀选刀与成品刀参数</div>
   <details class="version-details">
     <summary>版本记录与修订日志（点击展开） <button type="button" onclick="event.preventDefault();openChangelog(true);" style="margin-left:8px;font-size:12px;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:2px 10px;cursor:pointer;">查看更新</button></summary>
+  <div class="subtitle"><b style="color:#1d4ed8;">【V1.2.1 · 滚刀修复与测量反推（2026-11-19）】</b>
+  <b>修复 / 优化</b>：滚刀齿根高 hf₀ 补顶隙档，全齿高恢复 2.5m（原缺顶隙档致 2.25m，与 GB/T 6083 标准滚刀不符）；螺旋升角 γ 改精确定义 tanγ=mn·z₀/d₀ 用 atan（原 asin 在参数异常时静默失效）；滚刀配对改按标准号判定（GB/T 3478.1 / DIN 5480）；滚刀模式接入测量反推——分圆弧齿厚 s／跨棒距 M／公法线 Wk 任一输入即反推实际变位 x₁，跨齿数 k 优先用户输入。<br>
+  <b>新增 / 拦截</b>：齿廓系数异常（ha*≤0、c*&lt;0）与滚刀外径过小（da₀≤2ha₀）时提示并停止计算；螺旋升角 γ&gt;5°、前角≠0、M/Dp 几何不自洽时明确提示不再静默。<br>
   <div class="subtitle"><b style="color:#1d4ed8;">【V1.2.0 · 滚刀本体参数（2026-11-19）】</b>
   <b>新增 / 优化</b>：滚刀加工模式新增滚刀本体参数卡——主体（分度圆 d₀、螺旋升角 γ、容屑槽数 Zk、齿顶后角 αp、铲背量 K、容屑槽深 HK）、法向齿形（mn/αn/Pn/sn/ha₀/hf₀/h₀/齿顶圆角 ra）、轴向齿形（轴向齿距 Pax、轴向齿形角 αax、轴向齿厚 sax、导程 Pz）、精度等级（GB/T 6083）。高级选项新增「滚刀参数」输入（外径 da₀/全长 L/孔径 D/头数/容屑槽数/齿顶后角/前角/精度等级，滚刀模式显示）。<br>
   <b>修复</b>：滚刀分支齿廓系数由硬编码改为复用主流程口径，标准号选「无（自定义齿廓/非标）」+ 手填 ha*/hf*/c* 可正确表达非标齿廓（如 ha*=0.967、c*=0.04），不再被标准默认系数覆盖。<br>
@@ -1582,7 +1585,7 @@ input.invalid { border-color: var(--color-danger); background: var(--color-dange
     </div>
   </div>
   <div class="page-footer">
-    配刀参数 · 插齿刀选刀与成品刀参数 v1.2.0<span style="font-weight:700;color:#b45309;">T</span> · 本工具全部计算在本地浏览器完成，不上传任何数据；结果仅供工程师选型参考，正式刀坯参数请与刀具厂汇签确认。<br>
+    配刀参数 · 插齿刀选刀与成品刀参数 v1.2.1<span style="font-weight:700;color:#b45309;">T</span> · 本工具全部计算在本地浏览器完成，不上传任何数据；结果仅供工程师选型参考，正式刀坯参数请与刀具厂汇签确认。<br>
     <span style="color:#b45309;">农历九月十九，以此为始，愿本工具为齿轮刀具从业者省去几分计算的繁琐。</span>
   </div>
 </div>
@@ -6179,6 +6182,12 @@ function _doCalculate() {
  */
 const APP_VERSION = '1.2.1';
 const RELEASED_LOG = [
+  { version:'1.2.1', date:'2026-11-19', features:[], fixes:[
+      '滚刀齿根高 hf₀ 补顶隙档（全齿高恢复 2.5m）；螺旋升角 γ 改精确 atan；滚刀配对改按标准号判定（GB/T 3478.1 / DIN 5480）',
+      '滚刀模式接入测量反推：分圆弧齿厚 s / 跨棒距 M / 公法线 Wk 任一输入即反推实际变位 x₁，跨齿数 k 优先取用户输入',
+      '新增输入拦截：齿廓系数异常（ha*≤0、c*<0）与滚刀外径过小（da₀≤2ha₀）时提示并停止计算',
+      '新增警示：γ>5°、前角≠0、M/Dp 几何不自洽时明确提示不再静默；模数范围报错按加工方式分流',
+    ]},
   { version:'1.2.0', date:'2026-11-19', features:[
       '滚刀加工模式新增滚刀本体参数：主体（d₀/γ/Zk/αp/K/HK）、法向齿形（mn/αn/Pn/sn/ha₀/hf₀/h₀/ra）、轴向齿形（Pax/αax/sax/Pz）、精度等级',
       '新增滚刀规格输入：外径 da₀、全长 L、孔径 D、头数、容屑槽数、齿顶后角、前角、精度等级（高级选项·滚刀参数，滚刀模式显示）',
