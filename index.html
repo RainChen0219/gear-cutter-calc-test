@@ -2501,6 +2501,68 @@ function findStandardOptions(m, isInternal, alphaDeg, standardNo, profileModifie
   return options;
 }
 
+// ============================================================
+// v1.2.2 定制刀主导：基于工件几何直接生成最优定制插齿刀（内齿 20°/25°）
+// 不依赖现货档；z0 取"不径向顶切"前提下的最大整数（TRIM 原始临界，不强制 +1，支持零裕量）。
+// 刀坯走包络（da0 不固定）；现货标准刀在主流程保留为并列备选。
+function buildCustomShaper(m, z1, isInternal, alphaDeg, isNonStandard, stdM) {
+  if (!isInternal) return null;                          // 外齿维持现有标准档逻辑
+  if (Math.abs(alphaDeg - 30) < 0.01) return null;      // 30°花键维持现有标准档逻辑
+  if (m > 9.5) return null;   // m10~12 大模数走 findStandardOptions 成熟的 φ125 刀坯改制分支（z0=round(125/m)）
+  // z0 物理上限：碗形公称 φ125（d0≤约125），且内齿刀齿数必须小于工件齿数
+  const z0Max = Math.min(Math.floor(125 / m), z1 - 1);
+  // 从大到小找满足 z1 >= 原始临界（不 round+1）的最大 z0；x0 基准取 0，render 时再包络定 x0
+  for (let z0 = z0Max; z0 >= 10; z0--) {
+    const z2crit = Math.round(trimTabLinear(TRIM_T1, z0));  // 原始临界，不 +1
+    if (z1 >= z2crit) {
+      const d0 = m * z0;
+      // 公称档按 d0 圆整到最近标准碗形档（仅作刀体结构参考）
+      const nominal = d0 >= 115 ? 125 : d0 >= 90 ? 100 : d0 >= 65 ? 75 : d0 >= 45 ? 50 : 38;
+      return {
+        nominal, z0, d0,
+        da0: null,                                       // 定制刀坯走包络，不固定
+        db0: null, ha0: null,
+        needDa0: d0 + 2 * 1.25 * m,
+        blankShort: false, blankLevel: 'ok',
+        z2minOfficial: z2crit,
+        z2minSource: 'trimming',
+        type: 'cup',
+        isCustom: true,
+        stdBlank: false,
+        customZeroMargin: (z1 === z2crit),
+        isNonStandard, stdM, alpha: alphaDeg, tableLabel: 'CN20'
+      };
+    }
+  }
+  return null;
+}
+
+// 倒角三参数校验：W=沿齿向(端面圆周展开)宽，H=径向高，β=倒角面相对齿向(端面)夹角，tanβ=H/W。
+// 给二算一、冲突报错；不静默。
+function resolveChamfer(c) {
+  const deg = Math.PI / 180;
+  const has = v => v !== null && v !== undefined && v !== '';
+  const n = [has(c.beta), has(c.W), has(c.H)].filter(Boolean).length;
+  if (n < 2) return { ok: false, error: '至少输入角度/宽/高中的两个参数' };
+  let { beta, W, H } = c;
+  if (!has(H)) H = W * Math.tan(beta * deg);
+  else if (!has(W)) W = H / Math.tan(beta * deg);
+  else if (!has(beta)) beta = Math.atan(H / W) / deg;
+  else if (Math.abs(H - W * Math.tan(beta * deg)) > 1e-6)
+    return { ok: false, error: '倒角三参数冲突：H 应等于 W·tanβ' };
+  return { ok: true, beta, W, H };
+}
+
+// 倒角刃基圆校验：rb 必须由 correctedProfileAngle 输出（修正齿形角对应实际基圆），单一数据源。
+function checkChamferEdge(rb, edgeRadius) {
+  if (edgeRadius >= rb) return { belowBase: false };
+  return {
+    belowBase: true,
+    gap: rb - edgeRadius,
+    reason: '倒角刃落基圆以下，渐开线计算失效，需调整角度/齿顶并向用户说明'
+  };
+}
+
 // 渐开线函数 inv(α) = tan(α) - α（α用弧度）
 function inv(alphaDeg) {
   const alphaRad = alphaDeg * Math.PI / 180;
@@ -5069,6 +5131,20 @@ function _doCalculate() {
   const foreignCup = feasibleOptions.filter(o => o.foreign && o.type === 'cup');
   const efficiencyMode = document.getElementById('efficiencyMode') && document.getElementById('efficiencyMode').checked;
   let best = null;
+  // v1.2.2 定制刀主导：内齿 20°/25° 且用户未明确指定盘形时，直接以工件几何生成最优定制刀为首选；
+  //   现货标准刀保留在 feasibleOptions（"其他可选"）。零裕量临界在此强提示，不静默。
+  let customShaper = null;
+  if (internalTypePref !== 'disk') {
+    const _cm = findClosestModule(m);
+    customShaper = buildCustomShaper(m, z, isInternal, alphaDeg, _cm.isNonStandard, _cm.stdM);
+    if (customShaper) {
+      best = customShaper;
+      if (customShaper.customZeroMargin) {
+        rootCaveat = '⚠️ 定制刀 z₀=' + customShaper.z0 + ' 对工件 z=' + z + ' 为零裕量临界（TRIM 原始临界='
+          + customShaper.z2minOfficial + '，未加安全裕量），已可接受；如需更稳妥可降一齿，请确认。';
+      }
+    }
+  }
   // ① 用户明确选盘形（internalType='disk'）时，才从可行盘形里选最大
   if (internalTypePref === 'disk') {
     const diskOptions = feasibleOptions.filter(o => o.type === 'disk');
@@ -5384,6 +5460,8 @@ function _doCalculate() {
       }
     } else if (best.tableLabel === 'DIN-CUSTOM') {
       selectTip += '（φ' + best.nominal + ' 碗形·德标规格刀坯/定制：JB/T 7967 国标 φ100/φ125 档无 m' + best.stdM + '（小模数国标标准现货最大仅 φ75），大工件用此大刀刀齿多、包络误差小、效率高、寿命长；该规格为德标 Liebherr 规格或国产非标定制，刀坯按工件齿廓包络，<b>非国标标准现货，成本与交期更高，下单前请确认齿廓/大径与刀坯</b>）';
+    } else if (best.isCustom) {
+      selectTip += '（按工件几何定制·非国标现货：刀坯按齿廓包络，z₀取不顶切最大齿数；成本与交期高于标准现货，下单前请确认齿廓/大径）';
     } else {
       selectTip += (Math.abs(alphaDeg - 30) < 0.01 ? '（JB/T 7967-2010 30°花键标准规格）' : '（GB/T 6081-2001标准规格）');
     }
@@ -5759,18 +5837,37 @@ function _doCalculate() {
   }
 
   // ⑧ 齿顶倒棱/修缘推荐（半切顶）
-  // 依据：c=0.1m（径向深度）、a=0.09m（圆周宽度），成都工具研究所标准推荐；
-  //   用户采纳/手填倒角深（tipChamferC）时以其为准，圆周宽度按 a=0.9c 保持比例。
+  // 角度基准（与技术方案 3.20.3 倒角数据模型一致）：chamferC=H 径向高，chamferA=W 沿齿向
+  //   （端面圆周展开）宽，β=倒角面相对齿向(端面)夹角，tanβ=H/W，故用 atan2(H,W)；β 不是相对径向线的角。
+  // 依据：H=0.1m（径向深度）、W=0.09m（齿向宽），成都工具研究所标准推荐；
+  //   用户采纳/手填倒角深（tipChamferC）时以其为准，齿向宽按 W=0.9H 保持比例。
+  //   此为经验默认，角度/宽高须按工件图纸核对（如用例六 35°/宽0.4，成品 0.4×0.4=45°）。
   const chamferCInput = getLen('tipChamferC');          // 未采纳/未填 → null
-  const chamferC = chamferCInput !== null ? chamferCInput : 0.1 * m;
-  const chamferA = chamferC * 0.9;                      // 圆周宽度，保持 c:a=0.1:0.09
-  const chamferAngle = Math.atan2(chamferC, chamferA) * 180 / Math.PI; // 约48°
+  const chamferC = chamferCInput !== null ? chamferCInput : 0.1 * m;   // H 径向高
+  const chamferA = chamferC * 0.9;                      // W 齿向宽，保持 H:W=0.1:0.09
+  const chamferAngle = Math.atan2(chamferC, chamferA) * 180 / Math.PI; // β≈48°，相对齿向
+  // v1.2.2 基圆校验：用修正齿形角算实际基圆（单一数据源），以刀齿根圆半径（倒角刃位置的保守上界）
+  //   判断倒角刃是否落基圆以下；落基圆以下则显式提示并给灵活设计，不静默。
+  let chamferBaseWarn = '';
+  if (isInternal && best && best.d0) {
+    const _alphaO = correctedProfileAngle(alphaDeg);
+    const _rb = (best.d0 / 2) * Math.cos(_alphaO * Math.PI / 180);
+    const _rF0 = best.d0 / 2 - 1.25 * m;     // 刀齿根圆（hf0=1.25m），倒角刃在其处或更靠内
+    const edgeCheck = checkChamferEdge(_rb, _rF0);
+    if (edgeCheck.belowBase) {
+      chamferBaseWarn = '⚠️ 检测到倒角切削刃落基圆以下（基圆 r' + _rb.toFixed(2)
+        + '，齿根圆 r' + _rF0.toFixed(2) + '，保守差 ' + edgeCheck.gap.toFixed(2)
+        + 'mm），该区域渐开线计算已不准确。建议灵活刀具设计：倒角按 45°（宽' + (0.1 * m).toFixed(1)
+        + '×高' + (0.1 * m).toFixed(1) + '）工程化，取消按理论齿顶倒角，并在图纸上确认。';
+    }
+  }
   document.getElementById('chamferDepth').textContent = chamferC.toFixed(2)
     + ' mm' + (chamferCInput !== null ? '（已确认）' : '（=0.1m·经验默认，需按图纸核对）');
   document.getElementById('chamferWidth').textContent = chamferA.toFixed(2) + ' mm（=0.9c）';
   document.getElementById('chamferAngle').textContent = '约' + chamferAngle.toFixed(0) + '°';
   document.getElementById('chamferMethod').innerHTML =
-    isInternal ? '半切顶插齿刀一次切成（刀齿根填充）' : '半切顶滚刀/插齿刀一次切成';
+    (chamferBaseWarn ? '<div style="color:#c0392b;margin-bottom:4px">' + chamferBaseWarn + '</div>' : '')
+    + (isInternal ? '半切顶插齿刀一次切成（刀齿根填充）' : '半切顶滚刀/插齿刀一次切成');
 
   // ⑦ 非标模数改制计算（刀体结构参考标准档，齿形按非标m磨制）
   if (best && best.isNonStandard) {
