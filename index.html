@@ -875,6 +875,23 @@ input.invalid { border-color: var(--color-danger); background: var(--color-dange
       <input type="number" id="tipChamferC" placeholder="如 0.4" step="any" inputmode="decimal">
     </div>
   </div>
+  <div class="form-grid">
+    <div class="form-group">
+      <label><input type="checkbox" id="chamferNone" style="width:auto;margin-right:4px;">无倒角 <span class="opt">（图纸无齿顶修形时勾选）</span></label>
+    </div>
+    <div class="form-group">
+      <label for="chamferBeta">倒角角度 β <span class="unit-tag">°</span> <span class="opt">（相对齿向/端面）</span><span class="help-tip" tabindex="0" title="倒角面相对齿向（端面圆周展开方向）的夹角；与宽W/高H满足 tanβ=H/W，给二算一。">?</span></label>
+      <input type="number" id="chamferBeta" placeholder="如 35" step="any" inputmode="decimal">
+    </div>
+    <div class="form-group">
+      <label for="chamferW">倒角宽度 W <span class="unit-tag">mm</span> <span class="opt">（沿齿向/端面圆周展开）</span><span class="help-tip" tabindex="0" title="倒角沿齿向的宽度（用例六图纸标宽0.4）；与角度β/高H满足 tanβ=H/W。">?</span></label>
+      <input type="number" id="chamferW" placeholder="如 0.4" step="any" inputmode="decimal">
+    </div>
+    <div class="form-group">
+      <label for="chamferH">倒角高度 H <span class="unit-tag">mm</span> <span class="opt">（径向高，即旧倒角深c）</span><span class="help-tip" tabindex="0" title="倒角径向高度（与旧tipChamferC同口径）；与角度β/宽W满足 tanβ=H/W。">?</span></label>
+      <input type="number" id="chamferH" placeholder="如 0.4" step="any" inputmode="decimal">
+    </div>
+  </div>
     </fieldset>
 
     <fieldset class="input-group">
@@ -3546,6 +3563,7 @@ var FIELD_LABELS = {
   daMeasured: '大径实测', dfMeasured: '小径实测',
   daMax: '大径上限', daMin: '大径下限', dfMax: '小径上限', dfMin: '小径下限',
   tipChamferC: '齿顶倒角深 c（hK）',
+  chamferBeta: '倒角角度 β', chamferW: '倒角宽度 W', chamferH: '倒角高度 H', tipRadiusR: '刀齿顶圆角 R',
   fpt: '单个齿距偏差 fpt', Fp: '齿距累积公差 Fp',
   ess: '齿厚上偏差 Ess', esi: '齿厚下偏差 Esi',
   thSmax: '实际齿厚最大 Smax', thSmin: '实际齿厚最小 Smin',
@@ -4044,7 +4062,7 @@ function suggestBallDp() {
   // 恢复后触发一次压力角 change，重建标准号下拉与系数联动
   var _aEl = document.getElementById('alpha');
   if(_aEl) _aEl.dispatchEvent(new Event('change'));
-  ['fpt','Fp','ess','esi','thSmax','thSmin','thSvmax','thSvmin','faceWidth','daMeasured','dfMeasured','tipChamferC','ballDiameter','m','z','alpha','gearType'].forEach(attachSuggest);
+  ['fpt','Fp','ess','esi','thSmax','thSmin','thSvmax','thSvmin','faceWidth','daMeasured','dfMeasured','tipChamferC','ballDiameter','m','z','alpha','gearType','chamferBeta','chamferW','chamferH','tipRadiusR'].forEach(attachSuggest);
   // 齿顶倒角软填充：m/压力角/内外齿变化时，默认建议 0.1m（径向深度，约45°）
   suggestChamfer();
   ['m','z','alpha','gearType','unitSystem'].forEach(function(id){
@@ -4143,7 +4161,8 @@ function suggestBallDp() {
   // OCR 可填写的全部字段（与 applyFields 对应）；重新识图时只重置这些，避免上一张图数据残留
   var OCR_FIELD_IDS = ['alpha','gearType','m','z','standardNo','workPrecision',
     'ballDiameter','ballMMin','ballMMax','daMax','daMin','dfMax','dfMin',
-    'fpt','Fp','ha','totalHeight','x'];
+    'fpt','Fp','ha','totalHeight','x',
+    'chamferBeta','chamferW','chamferH','rootR'];
   // 重新识图前：把 OCR 字段全部恢复到页面初始状态，并清空待确认/原值快照，防止两次识图信息重合
   function resetForNewOcr(){
     OCR_FIELD_IDS.forEach(function(id){
@@ -4164,6 +4183,8 @@ function suggestBallDp() {
     if(alphaEl) alphaEl.value = '20';
     var gearEl = document.getElementById('gearType');
     if(gearEl) gearEl.value = 'external';
+    var cnEl = document.getElementById('chamferNone');
+    if(cnEl) cnEl.checked = false;
     // 触发压力角 change：重建标准号下拉，并把 ha/hf/c 恢复初始；其余联动因 m 为空会自动退出
     if(alphaEl) alphaEl.dispatchEvent(new Event('change', { bubbles: true }));
     refreshAcceptBar();
@@ -4201,6 +4222,11 @@ function suggestBallDp() {
     if(fields.ha != null && suggestForOcr('ha', Number(fields.ha))) ids.push('ha');
     if(fields.totalHeight != null && suggestForOcr('totalHeight', Number(fields.totalHeight))) ids.push('totalHeight');
     if(fields.x != null && suggestForOcr('x', Number(fields.x))) ids.push('x');
+    // 齿修形（倒角三参数+齿根圆角，v1.2.2迭代补充：OCR 18→22 字段；走同一橙色待确认通道）
+    if(fields.chamferBeta != null && suggestForOcr('chamferBeta', Number(fields.chamferBeta))) ids.push('chamferBeta');
+    if(fields.chamferW != null && suggestForOcr('chamferW', Number(fields.chamferW))) ids.push('chamferW');
+    if(fields.chamferH != null && suggestForOcr('chamferH', Number(fields.chamferH))) ids.push('chamferH');
+    if(fields.rootR != null && suggestForOcr('tipRadiusR', Number(fields.rootR))) ids.push('tipRadiusR');
     if(ids.length) refreshAcceptBar();
     return ids.length;
   }
@@ -5941,10 +5967,25 @@ function _doCalculate() {
   // 依据：H=0.1m（径向深度）、W=0.09m（齿向宽），成都工具研究所标准推荐；
   //   用户采纳/手填倒角深（tipChamferC）时以其为准，齿向宽按 W=0.9H 保持比例。
   //   此为经验默认，角度/宽高须按工件图纸核对（如用例六 35°/宽0.4，成品 0.4×0.4=45°）。
-  const chamferCInput = getLen('tipChamferC');          // 未采纳/未填 → null
-  const chamferC = chamferCInput !== null ? chamferCInput : 0.1 * m;   // H 径向高
-  const chamferA = chamferC * 0.9;                      // W 齿向宽，保持 H:W=0.1:0.09
-  const chamferAngle = Math.atan2(chamferC, chamferA) * 180 / Math.PI; // β≈48°，相对齿向
+  // v1.2.2迭代补充：无倒角显式选项 + 三参数β/W/H（给二算一、冲突报错）优先于旧单参数c。
+  //   勾选「无倒角」→ 不渲染倒角；否则三参数≥2项时 resolveChamfer 定稿；仅1项时回退旧 tipChamferC；全空用 0.1m 默认。
+  const chamferNone = document.getElementById('chamferNone') && document.getElementById('chamferNone').checked;
+  const cBeta = getLen('chamferBeta'), cW = getLen('chamferW'), cH = getLen('chamferH');
+  const cTriCount = [cBeta !== null, cW !== null, cH !== null].filter(Boolean).length;
+  const chamferCInput = getLen('tipChamferC');          // 未采纳/未填 → null（旧单参数，仅回退用）
+  let chamferC = null, chamferA = null, chamferAngle = null;
+  if (chamferNone) {
+    chamferC = 0; chamferA = 0; chamferAngle = 0;
+  } else if (cTriCount >= 2) {
+    const rc = resolveChamfer({ beta: cBeta, W: cW, H: cH });
+    if (rc.ok) { chamferC = rc.H; chamferA = rc.W; chamferAngle = rc.beta; }
+    // 冲突：rc.ok=false 时保持 null，走下方旧单参数回退并展示原提示（不静默）
+  }
+  if (chamferC === null) {
+    chamferC = chamferCInput !== null ? chamferCInput : 0.1 * m;   // H 径向高
+    chamferA = chamferC * 0.9;                            // W 齿向宽，保持 H:W=0.1:0.09
+    chamferAngle = Math.atan2(chamferC, chamferA) * 180 / Math.PI; // β≈48°，相对齿向
+  }
   // v1.2.2 基圆校验：用修正齿形角算实际基圆（单一数据源），以刀齿根圆半径（倒角刃位置的保守上界）
   //   判断倒角刃是否落基圆以下；落基圆以下则显式提示并给灵活设计，不静默。
   let chamferBaseWarn = '';
@@ -5960,10 +6001,16 @@ function _doCalculate() {
         + '×高' + (0.1 * m).toFixed(1) + '）工程化，取消按理论齿顶倒角，并在图纸上确认。';
     }
   }
-  document.getElementById('chamferDepth').textContent = chamferC.toFixed(2)
-    + ' mm' + (chamferCInput !== null ? '（已确认）' : '（=0.1m·经验默认，需按图纸核对）');
-  document.getElementById('chamferWidth').textContent = chamferA.toFixed(2) + ' mm（=0.9c）';
-  document.getElementById('chamferAngle').textContent = '约' + chamferAngle.toFixed(0) + '°';
+  if (chamferNone) {
+    document.getElementById('chamferDepth').textContent = '无（图纸无齿顶修形）';
+    document.getElementById('chamferWidth').textContent = '—';
+    document.getElementById('chamferAngle').textContent = '—';
+  } else {
+    document.getElementById('chamferDepth').textContent = chamferC.toFixed(2)
+      + ' mm' + (chamferCInput !== null ? '（已确认）' : '（=0.1m·经验默认，需按图纸核对）');
+    document.getElementById('chamferWidth').textContent = chamferA.toFixed(2) + ' mm（=0.9c）';
+    document.getElementById('chamferAngle').textContent = '约' + chamferAngle.toFixed(0) + '°';
+  }
   document.getElementById('chamferMethod').innerHTML =
     (chamferBaseWarn ? '<div style="color:#c0392b;margin-bottom:4px">' + chamferBaseWarn + '</div>' : '')
     + (isInternal ? '半切顶插齿刀一次切成（刀齿根填充）' : '半切顶滚刀/插齿刀一次切成');
