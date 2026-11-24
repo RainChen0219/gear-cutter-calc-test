@@ -558,6 +558,9 @@ input.invalid { border-color: var(--color-danger); background: var(--color-dange
   <div class="subtitle">内/外花键与齿轮 → 插齿刀选刀与成品刀参数</div>
   <details class="version-details">
     <summary>版本记录与修订日志（点击展开） <button type="button" onclick="event.preventDefault();openChangelog(true);" style="margin-left:8px;font-size:12px;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:2px 10px;cursor:pointer;">查看更新</button></summary>
+  <div class="subtitle"><b style="color:#1d4ed8;">【V1.2.2 迭代补充 · 报价/裕量/碗形收敛（2026-11-24）】</b>
+  <b>新增</b>：插齿刀/滚刀报价卡（毛胚成本双公式：毛胚直径=成品外径×105%、高度×104%，体积π·(D/2)²·H×密度8.15，报价①=成本×2.2、②=成本×2.5；材料6542=100元/kg、M35=140元/kg，单价可编辑）；高级选项新增「临界裕量 Δ」（定制刀候选判据 z₂min+Δ，默认0保持零裕量临界现状）；小模数定制刀（d₀&lt;45）结构口径改锥柄（φ25/φ38，高度口径用锥柄总长L）。<br>
+  <b>收敛</b>：选刀全部收敛为碗形（用户拍板：盘形不做）——移除盘形小档遍历、DIN盘形档、φ160/200定制盘形兜底与盘形折叠块；锥柄φ25/38保留（小内径工件物理必需）。<br>
   <div class="subtitle"><b style="color:#1d4ed8;">【V1.2.1 · 滚刀修复与测量反推（2026-11-19）】</b>
   <b>修复 / 优化</b>：滚刀齿根高 hf₀ 补顶隙档，全齿高恢复 2.5m（原缺顶隙档致 2.25m，与 GB/T 6083 标准滚刀不符）；螺旋升角 γ 改精确定义 tanγ=mn·z₀/d₀ 用 atan（原 asin 在参数异常时静默失效）；滚刀配对改按标准号判定（GB/T 3478.1 / DIN 5480）；滚刀模式接入测量反推——分圆弧齿厚 s／跨棒距 M／公法线 Wk 任一输入即反推实际变位 x₁，跨齿数 k 优先用户输入。<br>
   <b>新增 / 拦截</b>：齿廓系数异常（ha*≤0、c*&lt;0）与滚刀外径过小（da₀≤2ha₀）时提示并停止计算；螺旋升角 γ&gt;5°、前角≠0、M/Dp 几何不自洽时明确提示不再静默。<br>
@@ -1157,6 +1160,10 @@ input.invalid { border-color: var(--color-danger); background: var(--color-dange
       <label for="s0Front">刀具前端面齿厚 s₀ <span class="unit-tag">mm</span> <span class="opt">（选填，填后精确反推x₀）</span><span class="help-tip" tabindex="0" title="插齿刀前端面上的齿厚，填入可精确反推 x₀。">?</span></label>
       <input type="number" id="s0Front" placeholder="图纸前端面齿厚，如14.32" step="any" inputmode="decimal">
     </div>
+    <div class="form-group">
+      <label for="customMarginDelta">临界裕量 Δ <span class="opt">（齿数，默认0）</span><span class="help-tip" tabindex="0" title="定制刀候选判据 z₂min 额外加 Δ 齿：默认0保持零裕量临界可加工现状；Δ≥1 更保守（排除 z₁=z₂min 的临界档），仅作用于定制刀候选，标准档表值不叠加。">?</span></label>
+      <input type="number" id="customMarginDelta" placeholder="0" step="1" min="0" max="10" inputmode="numeric">
+    </div>
   </div>
     </fieldset>
 
@@ -1395,6 +1402,35 @@ input.invalid { border-color: var(--color-danger); background: var(--color-dange
           <div class="param-item" style="grid-column:1/-1;"><div class="param-name">精度等级</div><div class="param-value" id="hobbody_grade"></div></div>
         </div>
       </div>
+
+      <div class="result-card recommend" id="hobQuoteCard" style="display:none;">
+        <h3>滚刀报价（毛胚成本 × 系数）</h3>
+        <div class="form-grid" style="margin-bottom:10px;">
+          <div class="form-group">
+            <label for="quoteMatHob">材料 <span class="opt">（毛胚材质）</span></label>
+            <select id="quoteMatHob">
+              <option value="6542">6542 / M2（100元/kg）</option>
+              <option value="M35">M35（140元/kg）</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="quotePriceHob">材料单价 <span class="unit-tag">元/kg</span> <span class="opt">（默认按牌号，可改）</span></label>
+            <input type="number" id="quotePriceHob" placeholder="100" step="any" inputmode="decimal">
+          </div>
+        </div>
+        <div class="params-grid">
+          <div class="param-item"><div class="param-name">成品外径（da₀）</div><div class="param-value" id="hobQuoteDa0"></div></div>
+          <div class="param-item"><div class="param-name">成品全长（L）</div><div class="param-value" id="hobQuoteL"></div></div>
+          <div class="param-item"><div class="param-name">毛胚直径 × 高度（105% × 104%）</div><div class="param-value" id="hobQuoteBlank"></div></div>
+          <div class="param-item"><div class="param-name">毛胚质量</div><div class="param-value" id="hobQuoteMass"></div></div>
+          <div class="param-item"><div class="param-name">材料成本</div><div class="param-value" id="hobQuoteCost"></div></div>
+          <div class="param-item"><div class="param-name">报价①（成本×2.2）</div><div class="param-value" id="hobQuoteP1" style="font-weight:700;color:#1d4ed8;"></div></div>
+          <div class="param-item" style="grid-column:1/-1;"><div class="param-name">报价②（成本×2.5）</div><div class="param-value" id="hobQuoteP2" style="font-weight:700;color:#b91c1c;"></div></div>
+        </div>
+        <div class="tip" style="margin-top:8px;font-size:12px;color:#9ca3af;">
+          口径：毛胚直径=成品外径×105%，毛胚高度=成品全长×104%；体积 π·(D/2)²·H；质量=体积×密度8.15g/cm³；成本=质量×单价；报价=成本×2.2 / ×2.5。滚刀高度取全长L；供参考核价，不含加工费/涂层/热处理，以实际报价为准。
+        </div>
+      </div>
     </div>
 
     <div class="summary-strip" id="summaryStrip" style="display:none;">
@@ -1468,6 +1504,35 @@ input.invalid { border-color: var(--color-danger); background: var(--color-dange
     <div class="result-card">
       <h3>选档说明</h3>
       <div class="tip" id="selectTip"></div>
+    </div>
+
+    <div class="result-card recommend" id="shaperQuoteCard" style="display:none;">
+      <h3>插齿刀报价（毛胚成本 × 系数）</h3>
+      <div class="form-grid" style="margin-bottom:10px;">
+        <div class="form-group">
+          <label for="quoteMatShaper">材料 <span class="opt">（毛胚材质）</span></label>
+          <select id="quoteMatShaper">
+            <option value="6542">6542 / M2（100元/kg）</option>
+            <option value="M35">M35（140元/kg）</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="quotePriceShaper">材料单价 <span class="unit-tag">元/kg</span> <span class="opt">（默认按牌号，可改）</span></label>
+          <input type="number" id="quotePriceShaper" placeholder="100" step="any" inputmode="decimal">
+        </div>
+      </div>
+      <div class="params-grid">
+        <div class="param-item"><div class="param-name">成品外径（da₀）</div><div class="param-value" id="quoteDa0"></div></div>
+        <div class="param-item"><div class="param-name">成品高度（B/L）</div><div class="param-value" id="quoteH"></div></div>
+        <div class="param-item"><div class="param-name">毛胚直径 × 高度（105% × 104%）</div><div class="param-value" id="quoteBlank"></div></div>
+        <div class="param-item"><div class="param-name">毛胚质量</div><div class="param-value" id="quoteMass"></div></div>
+        <div class="param-item"><div class="param-name">材料成本</div><div class="param-value" id="quoteCost"></div></div>
+        <div class="param-item"><div class="param-name">报价①（成本×2.2）</div><div class="param-value" id="quoteP1" style="font-weight:700;color:#1d4ed8;"></div></div>
+        <div class="param-item" style="grid-column:1/-1;"><div class="param-name">报价②（成本×2.5）</div><div class="param-value" id="quoteP2" style="font-weight:700;color:#b91c1c;"></div></div>
+      </div>
+      <div class="tip" style="margin-top:8px;font-size:12px;color:#9ca3af;">
+        口径：毛胚直径=成品外径×105%，毛胚高度=成品高度×104%；体积 π·(D/2)²·H；质量=体积×密度8.15g/cm³；成本=质量×单价；报价=成本×2.2 / ×2.5。插齿刀高度取总厚B（锥柄取总长L）；供参考核价，不含加工费/涂层/热处理，以实际报价为准。
+      </div>
     </div>
 
     <div class="result-card" id="meshCard" style="display:none;">
@@ -2345,11 +2410,9 @@ function findStandardOptions(m, isInternal, alphaDeg, standardNo, profileModifie
     const mTable = table[nominal];
     if (mTable[stdM]) {
       const opt = mTable[stdM];
-      // v0.29C 用例5修正：内齿大工件（m≥6）保留 φ160/φ200 盘形标准现货刀（GB/T 6081 Ⅰ型盘形，
-      // 公称直径75~200），作为刚性/效率/装夹备选；默认仍推荐 φ125 碗形（见 best 选档）。
-      // 仅小工件（φ160 盘形刀体积过大、内孔空间不足且无必要）时不主动推荐大盘形——但仍列出，
-      // 由可行性（z0<z、径向进给顶切）和用户加工场景决定，不再一律跳过。
-      // （旧逻辑"内齿跳过所有盘形刀"会导致 m10 大内齿无任何标准档、best=null 渲染卡死，已废。）
+      // v1.2.2 批次4·碗形收敛（用户拍板：全部工件均做碗形，盘形不做）：
+      //   跳过一切盘形档（φ160/φ200 等），仅保留锥柄与碗形；DISK_EXTRA/DIN盘形/定制盘形兜底分支已同步移除。
+      if (opt.type === 'disk') continue;
       // needDa0=d0+2×ha0*m（ha0按标准号：20°齿轮1.25，30°花键DIN0.65/GB0.775；
       // 25°粗齿距FullDepth=1.25/FullFillet=1.30/细齿距1003=1.2；25°无标准非标外花键保留0.9）
       let ha0Coeff;
@@ -2405,45 +2468,8 @@ function findStandardOptions(m, isInternal, alphaDeg, standardNo, profileModifie
     }
   }
   // ============================================================
-  // Ⅰ型盘形【小档】φ75/100/125（GB/T 6081 表1~表3）：遍历 DISK_EXTRA_TABLE 补入盘形候选
-  // 仅 20°/25°（非30°）；φ160/200 已在 SHAPER_TABLE，小档盘形 SHAPER_TABLE 缺失，此处补全。
-  // 盘形与碗形是不同结构/夹持/成本，即使 z0/d0 相同也都保留（同盘形内去重）。
-  if (!is30) {
-    for (const dNom of Object.keys(DISK_EXTRA_TABLE)) {
-      const dMTable = DISK_EXTRA_TABLE[dNom];
-      if (dMTable[stdM]) {
-        const dOpt = dMTable[stdM];
-        const d0New = m * dOpt.z0;
-        const _ha0Disk = 1.25;  // 20°/25° 盘形齿顶高系数基准
-        const needDa0 = d0New + 2 * _ha0Disk * m;
-        const da0Diff = needDa0 - dOpt.da0;
-        const dup = options.some(o => o.type === 'disk' && o.z0 === dOpt.z0 && Math.abs(o.d0 - d0New) < 0.1);
-        if (dup) continue;
-        options.push({
-          nominal: parseFloat(dNom),
-          z0: dOpt.z0,
-          d0: d0New,
-          da0: dOpt.da0,
-          db0: null,
-          ha0: null,
-          needDa0: needDa0,
-          blankShort: isInternal && da0Diff > 0.5,
-          blankLevel: !isInternal
-            ? 'ok'
-            : (da0Diff <= 0.5 ? 'ok' : (da0Diff < 3 ? 'minor' : (da0Diff <= 8 ? 'warn' : 'severe'))),
-          z2minOfficial: null,
-          z2minSource: isInternal ? 'trimming' : null,
-          type: 'disk',
-          isNonStandard: isNonStandard,
-          stdM: stdM,
-          alpha: alphaDeg,
-          tableLabel: 'CN20',
-          stdBlank: false,
-        });
-      }
-    }
-  }
-  // ============================================================
+  // v1.2.2 批次4·碗形收敛：Ⅰ型盘形小档遍历已移除（用户拍板：盘形不做，全部碗形）
+  // 20°/25° 内齿大模数（m>φ125碗形标准上限）：在 φ125 碗形刀坯上生成【定制/改制碗形档】
   // 20°/25° 内齿大模数（m>φ125碗形标准上限）：在 φ125 碗形刀坯上生成【定制/改制碗形档】
   // 权威依据：GB/T 6081-2001 Ⅱ型碗形 φ125 标准仅覆盖 m4~m8（z31~z16），现货改制到 m9.5(z14)；
   //   m≥10 时无标准碗形，但 φ125 碗形刀坯仍可改制（真实设计图用例5：m10 z51 内齿→碗形 z13 d0=130，
@@ -2518,76 +2544,7 @@ function findStandardOptions(m, isInternal, alphaDeg, standardNo, profileModifie
       }
     }
   }
-  // DIN 5480 盘形刀：仅在选 DIN 5480 时列出（如用例4 盘形 z16/d0=128）。
-  // 默认推荐只在碗形内选最大可行（方案B优化版），盘形 φ160/φ200 不参与默认 best。
-  if (is30 && standardNo === 'DIN 5480') {
-    for (const row of DIN5480_DISK_TABLE) {
-      if (Math.abs(row.m - stdM) < 0.001) {
-        // 去重仅在同形态（盘形）内进行；碗形与盘形是不同结构/夹持/成本，即使 z0/d0 相同也都保留
-        const dup = options.some(o => o.type === 'disk' && o.z0 === row.z0 && Math.abs(o.d0 - row.d0) < 0.1);
-        if (dup) continue;
-        const nominalD = row.d0 >= 115 ? 125 : row.d0 >= 90 ? 100 : row.d0 >= 65 ? 75 : row.d0 >= 45 ? 50 : 38;
-        options.push({
-          nominal: nominalD,
-          z0: row.z0,
-          d0: row.d0,
-          da0: row.d0 + 2 * 0.65 * row.m,
-          db0: null,
-          ha0: 0.65,
-          z2minOfficial: null,
-          type: 'disk',
-          bore: row.d3 || 31.743,
-          isNonStandard: isNonStandard,
-          stdM: stdM,
-          alpha: alphaDeg,
-          tableLabel: 'DIN',
-          foreign: false,
-          // DIN5480盘形刀：现货目录仅给d0/d3结构尺寸，da0须按工件齿根包络定制（如用例4），走包络
-          stdBlank: false,
-        });
-      }
-    }
-  }
-  // ============================================================
-  // 非30°（20°/25°）：盘形 φ160/φ200【定制兜底】
-  // 当模数在该档可改制范围内、但 SHAPER_TABLE 无精确键（如 m9.5：φ160 键为6/7/8/9/10、
-  // φ200 键为8/9/10/11/12，均无9.5）时，按 z0=round(标称/m) 生成定制盘形（刀坯走包络，不固定）。
-  // 物理已验证：m9.5→φ160 z17/d161.5、φ200 z21/d199.5，外齿 x0 区间[-0.3,1.5] 均可行。
-  // 标准模数（如 m9）时 z0 与标准键一致，去重跳过。
-  if (!is30) {
-    const diskCustomRanges = [
-      { nom: 160, mLo: 6, mHi: 10 },
-      { nom: 200, mLo: 8, mHi: 12 }
-    ];
-    for (const dr of diskCustomRanges) {
-      if (m >= dr.mLo - 1e-9 && m <= dr.mHi + 1e-9) {
-        const z0c = Math.round(dr.nom / m);
-        const d0c = m * z0c;
-        const dup = options.some(o => o.type === 'disk' && o.nominal === dr.nom && Math.abs(o.z0 - z0c) < 0.1);
-        if (dup) continue;
-        options.push({
-          nominal: dr.nom,
-          z0: z0c,
-          d0: d0c,
-          da0: null,
-          db0: null,
-          ha0: null,
-          needDa0: null,
-          blankShort: false,
-          blankLevel: 'ok',
-          z2minOfficial: null,
-          z2minSource: null,
-          type: 'disk',
-          isCustom: true,
-          stdBlank: false,
-          isNonStandard: isNonStandard,
-          stdM: stdM,
-          alpha: alphaDeg,
-          tableLabel: tableLabel,
-        });
-      }
-    }
-  }
+  // v1.2.2 批次4·碗形收敛：DIN 5480 盘形刀段已移除（用户拍板：盘形不做，全部碗形）。
   return options;
 }
 
@@ -2595,23 +2552,27 @@ function findStandardOptions(m, isInternal, alphaDeg, standardNo, profileModifie
 // v1.2.2 定制刀主导：基于工件几何直接生成最优定制插齿刀（内齿 20°/25°）
 // 不依赖现货档；z0 取"不径向顶切"前提下的最大整数（TRIM 原始临界，不强制 +1，支持零裕量）。
 // 刀坯走包络（da0 不固定）；现货标准刀在主流程保留为并列备选。
-function buildCustomShaper(m, z1, isInternal, alphaDeg, isNonStandard, stdM) {
+function buildCustomShaper(m, z1, isInternal, alphaDeg, isNonStandard, stdM, marginDelta) {
   if (!isInternal) return null;                          // 外齿维持现有标准档逻辑
   if (Math.abs(alphaDeg - 30) < 0.01) return null;      // 30°花键维持现有标准档逻辑
   if (m > 9.5) return null;   // m10~12 大模数走 findStandardOptions 成熟的 φ125 刀坯改制分支（z0=round(125/m)）
+  marginDelta = (marginDelta === undefined || marginDelta === null || isNaN(marginDelta)) ? 0 : Number(marginDelta);
   // z0 物理上限：碗形公称 φ125（d0≤约125），且内齿刀齿数必须小于工件齿数
   const z0Max = Math.min(Math.floor(125 / m), z1 - 1);
-  // 从大到小找满足 z1 >= 原始临界（不 round+1）的最大 z0；x0 基准取 0，render 时再包络定 x0
+  // 从大到小找满足 z1 >= 原始临界+可配置裕量（不 round+1）的最大 z0；x0 基准取 0，render 时再包络定 x0
   for (let z0 = z0Max; z0 >= 10; z0--) {
-    // 候选判据双保险：KHK x0=0 表 + Polder 1969 overcut 判据（x0=0、ha0*=1.25 新刀）取 max
+    // 候选判据双保险：KHK x0=0 表 + Polder 1969 overcut 判据（x0=0、ha0*=1.25 新刀）取 max，
+    // 再叠加用户可配置临界裕量 Δ（默认0保持零裕量临界现状；Δ≥1 更保守，排除 z1=z2crit 的临界档）
     const z2crit = Math.max(
       Math.round(trimTabLinear(TRIM_T1, z0)),
       Math.ceil(polderOvercutZ2min(m, z0, 0, m * (z0 / 2 + 1.25), alphaDeg, 1, 0))
-    );
+    ) + marginDelta;
     if (z1 >= z2crit) {
       const d0 = m * z0;
-      // 公称档按 d0 圆整到最近标准碗形档（仅作刀体结构参考）
-      const nominal = d0 >= 115 ? 125 : d0 >= 90 ? 100 : d0 >= 65 ? 75 : d0 >= 45 ? 50 : 38;
+      // 结构口径：d0≥45 圆整到碗形档（50/75/100/125）；d0<45 为小刀，碗形 φ50 装不下小内孔，
+      // 物理上须走锥柄结构（SHAPER_STRUCTURE_CONE φ25/φ38），type='cone'，高度口径用锥柄总长 L。
+      const isSmall = d0 < 45;
+      const nominal = d0 >= 115 ? 125 : d0 >= 90 ? 100 : d0 >= 65 ? 75 : d0 >= 45 ? 50 : (d0 >= 32 ? 38 : 25);
       return {
         nominal, z0, d0,
         da0: null,                                       // 定制刀坯走包络，不固定
@@ -2620,7 +2581,7 @@ function buildCustomShaper(m, z1, isInternal, alphaDeg, isNonStandard, stdM) {
         blankShort: false, blankLevel: 'ok',
         z2minOfficial: z2crit,
         z2minSource: 'trimming',
-        type: 'cup',
+        type: isSmall ? 'cone' : 'cup',
         isCustom: true,
         stdBlank: false,
         customZeroMargin: (z1 === z2crit),
@@ -4481,9 +4442,123 @@ function renderHobResult(r){
       if(hbTip) hbTip.style.display='block';
       ['hobbody_da0','hobbody_L','hobbody_D','hobbody_d0','hobbody_gamma','hobbody_Zk','hobbody_ap','hobbody_K','hobbody_HK','hobbody_z0','hobbody_hand','hobbody_rake','hobbody_mn','hobbody_an','hobbody_Pn','hobbody_sn','hobbody_ha0','hobbody_hf0','hobbody_h0','hobbody_ra','hobbody_Pax','hobbody_ax','hobbody_sax','hobbody_Pz','hobbody_grade'].forEach(function(id){ var el=document.getElementById(id); if(el) el.textContent='—'; });
     }
+    // v1.2.2 批次4：滚刀报价卡（毛胚成本×2.2/2.5 双公式；da0/L 用滚刀本体参数）
+    renderHobQuote(hb);
+  } else {
+    renderHobQuote(null);
   }
 }
 // ================= v1.1.1 滚刀分支结束 =================
+
+// ================= v1.2.2 批次4：报价双公式（用户2026-11-24提供口径，非网络公式） =================
+// 公式：毛胚直径 Db=成品外径×1.05、毛胚高度 Hb=成品高度×1.04；体积 V=π·(Db/2)²·Hb（mm³）
+//       质量=V(mm³)/1000(cm³)×8.15(g/cm³)/1000(kg)；成本=质量×单价(元/kg)；报价1=×2.2、报价2=×2.5
+// 材料默认单价：6542=100元/kg（10万/吨）、M35=140元/kg（14万/吨）；单价可编辑。
+function calcQuote(da0, height, pricePerKg) {
+  if (da0 === null || da0 === undefined || isNaN(da0) || da0 <= 0) return null;
+  if (height === null || height === undefined || isNaN(height) || height <= 0) return null;
+  if (pricePerKg === null || pricePerKg === undefined || isNaN(pricePerKg) || pricePerKg < 0) return null;
+  const Db = da0 * 1.05;
+  const Hb = height * 1.04;
+  const Vmm3 = Math.PI * (Db / 2) * (Db / 2) * Hb;
+  const massKg = Vmm3 / 1000 * 8.15 / 1000;      // mm³→cm³→g→kg
+  const cost = massKg * pricePerKg;
+  return { Db: Db, Hb: Hb, massKg: massKg, cost: cost, p1: cost * 2.2, p2: cost * 2.5 };
+}
+const QUOTE_DEFAULT_PRICE = { '6542': 100, 'M35': 140 };
+var _quoteEventsBound = false;
+function bindQuoteEvents() {
+  if (_quoteEventsBound) return;
+  _quoteEventsBound = true;
+  [['quoteMatShaper','quotePriceShaper'], ['quoteMatHob','quotePriceHob']].forEach(function(pair){
+    var matEl = document.getElementById(pair[0]);
+    var priceEl = document.getElementById(pair[1]);
+    if (!matEl || !priceEl) return;
+    matEl.addEventListener('change', function(){
+      priceEl.value = QUOTE_DEFAULT_PRICE[matEl.value] !== undefined ? QUOTE_DEFAULT_PRICE[matEl.value] : priceEl.value;
+      // 重新计算当前模式报价
+      if (pair[0] === 'quoteMatShaper') refreshShaperQuote();
+      else refreshHobQuote();
+    });
+    priceEl.addEventListener('input', function(){
+      if (pair[0] === 'quoteMatShaper') refreshShaperQuote();
+      else refreshHobQuote();
+    });
+  });
+}
+// 插齿刀报价渲染：da0 口径与⑤卡 da0Show 一致（实测优先→标准现货固定→包络）；高度=锥柄总长L/碗形总厚B
+var _shaperQuoteCtx = null;
+function refreshShaperQuote() {
+  var ctx = _shaperQuoteCtx;
+  var card = document.getElementById('shaperQuoteCard');
+  if (!ctx || !card) { if (card) card.style.display = 'none'; return; }
+  var matEl = document.getElementById('quoteMatShaper');
+  var priceEl = document.getElementById('quotePriceShaper');
+  if (priceEl && priceEl.value === '') priceEl.value = QUOTE_DEFAULT_PRICE[matEl.value] !== undefined ? QUOTE_DEFAULT_PRICE[matEl.value] : 100;
+  var price = parseFloat(priceEl.value);
+  var q = calcQuote(ctx.da0, ctx.height, price);
+  if (!q) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  function set(id, v){ var el = document.getElementById(id); if (el) el.textContent = v; }
+  set('quoteDa0', ctx.da0.toFixed(2) + ' mm');
+  set('quoteH', ctx.height.toFixed(2) + ' mm' + ctx.hSrc);
+  set('quoteBlank', q.Db.toFixed(2) + ' × ' + q.Hb.toFixed(2) + ' mm');
+  set('quoteMass', q.massKg.toFixed(3) + ' kg');
+  set('quoteCost', '¥' + q.cost.toFixed(2));
+  set('quoteP1', '¥' + q.p1.toFixed(2));
+  set('quoteP2', '¥' + q.p2.toFixed(2));
+}
+function renderShaperQuote(opt, design) {
+  var card = document.getElementById('shaperQuoteCard');
+  if (!card) return;
+  if (!opt || opt.warning) { card.style.display = 'none'; _shaperQuoteCtx = null; return; }
+  // da0：实测输入优先 → 内齿标准现货固定值 → 包络 design.da
+  const isInternalQ = (document.getElementById('gearType').value === 'internal');
+  const dm = document.getElementById('da0Measured');
+  const da0Meas = (dm && dm.value !== '') ? parseFloat(dm.value) : null;
+  let da0Q = null;
+  if (da0Meas !== null) da0Q = da0Meas;
+  else if (isInternalQ && opt.stdBlank) da0Q = opt.da0;
+  else if (design && design.da) da0Q = design.da;
+  else if (opt.da0) da0Q = opt.da0;
+  // 高度口径：锥柄用总长L（φ25=75/φ38=90），碗形用总厚B（φ50=27/φ75=32/φ100=36/φ125=40）
+  let heightQ = null, hSrc = '';
+  const st = getToolStructure(opt.nominal, opt.type);
+  if (st) {
+    if (opt.type === 'cone') { heightQ = st.L; hSrc = '（锥柄总长L）'; }
+    else { heightQ = st.B; hSrc = '（碗形总厚B）'; }
+  }
+  _shaperQuoteCtx = (da0Q !== null && heightQ !== null) ? { da0: da0Q, height: heightQ, hSrc: hSrc } : null;
+  refreshShaperQuote();
+}
+var _hobQuoteCtx = null;
+function refreshHobQuote() {
+  var ctx = _hobQuoteCtx;
+  var card = document.getElementById('hobQuoteCard');
+  if (!ctx || !card) { if (card) card.style.display = 'none'; return; }
+  var matEl = document.getElementById('quoteMatHob');
+  var priceEl = document.getElementById('quotePriceHob');
+  if (priceEl && priceEl.value === '') priceEl.value = QUOTE_DEFAULT_PRICE[matEl.value] !== undefined ? QUOTE_DEFAULT_PRICE[matEl.value] : 100;
+  var price = parseFloat(priceEl.value);
+  var q = calcQuote(ctx.da0, ctx.height, price);
+  if (!q) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  function set(id, v){ var el = document.getElementById(id); if (el) el.textContent = v; }
+  set('hobQuoteDa0', ctx.da0.toFixed(2) + ' mm');
+  set('hobQuoteL', ctx.height.toFixed(2) + ' mm');
+  set('hobQuoteBlank', q.Db.toFixed(2) + ' × ' + q.Hb.toFixed(2) + ' mm');
+  set('hobQuoteMass', q.massKg.toFixed(3) + ' kg');
+  set('hobQuoteCost', '¥' + q.cost.toFixed(2));
+  set('hobQuoteP1', '¥' + q.p1.toFixed(2));
+  set('hobQuoteP2', '¥' + q.p2.toFixed(2));
+}
+function renderHobQuote(hb) {
+  var card = document.getElementById('hobQuoteCard');
+  if (!card) return;
+  if (!hb || hb.da0 === null || hb.L === null) { card.style.display = 'none'; _hobQuoteCtx = null; return; }
+  _hobQuoteCtx = { da0: hb.da0, height: hb.L };
+  refreshHobQuote();
+}
 
 function calculate() {
   // R14：纯同步计算，无假 loading；直接同步执行，结果立即出现在输入下方
@@ -4496,6 +4571,7 @@ function calculate() {
   if (strip && strip.style.display !== 'none') { strip.scrollIntoView({block:'start', behavior:'smooth'}); }
 }
 function _doCalculate() {
+  bindQuoteEvents();  // v1.2.2 批次4：报价卡材料/单价事件（幂等绑定）
   // v0.29G修复(C1/C6/#150/#151)：入口非法输入改为页内错误条，替代原生 alert（避免模态阻塞、可在自动化下复核）
   function showInputError(msg) {
     // R15：inputErrorBox 已静态写在 #result 顶部，这里只填内容与显示，不再动态创建 DOM
@@ -5130,7 +5206,7 @@ function _doCalculate() {
   if (isInternal) {
     toolHtml = '<span class="tool-badge badge-shaper">插齿刀</span>';
     if (Math.abs(alphaDeg - 30) < 0.01) {
-      toolTip = '内花键无法用滚刀加工，必须用插齿刀。国标JB/T 7967-2010仅碗形φ50-125+锥柄φ25/38（无盘形档）；德标Liebherr盘形档见下方"外资刀源参考"。带台肩/双联结构选碗形，小内径选锥柄。';
+      toolTip = '内花键无法用滚刀加工，必须用插齿刀。国标JB/T 7967-2010仅碗形φ50-125+锥柄φ25/38。带台肩/双联结构选碗形，小内径选锥柄。';
     } else {
       toolTip = '内齿圈/内花键无法用滚刀加工，必须用插齿刀。GB/T 6081-2001 标准覆盖碗形 φ50-125 + 盘形 φ160/200；带台肩/多联结构选碗形，普通通内齿选盘形。';
     }
@@ -5261,7 +5337,10 @@ function _doCalculate() {
   let customShaper = null;
   if (internalTypePref !== 'disk') {
     const _cm = findClosestModule(m);
-    customShaper = buildCustomShaper(m, z, isInternal, alphaDeg, _cm.isNonStandard, _cm.stdM);
+    // 临界裕量 Δ（高级选项·定制刀参数）：默认0；作用于定制刀候选判据（v1.2.2 批次4）
+    const _mdEl = document.getElementById('customMarginDelta');
+    const _md = (_mdEl && _mdEl.value !== '') ? Math.max(0, parseFloat(_mdEl.value) || 0) : 0;
+    customShaper = buildCustomShaper(m, z, isInternal, alphaDeg, _cm.isNonStandard, _cm.stdM, _md);
     if (customShaper) {
       best = customShaper;
       if (customShaper.customZeroMargin) {
@@ -5270,15 +5349,8 @@ function _doCalculate() {
       }
     }
   }
-  // ① 用户明确选盘形（internalType='disk'）时，才从可行盘形里选最大
-  if (internalTypePref === 'disk') {
-    const diskOptions = feasibleOptions.filter(o => o.type === 'disk');
-    if (diskOptions.length > 0) {
-      diskOptions.sort((a, b) => b.z0 - a.z0);
-      best = diskOptions[0];
-    }
-  }
-  // ② 默认（含"效率优先"）：只在【碗形】内选"能用的、最大公称直径"（方案B优化版）。
+  // v1.2.2 批次4·碗形收敛：用户明确选盘形的分支已移除（internalType='disk' 选项不再提供）。
+  // ① 默认（含"效率优先"）：只在【碗形】内选"能用的、最大公称直径"（方案B优化版）。
   //   碗形国标公称直径以 φ125 封顶，天然不含 φ160/φ200 盘形；大工件选最大可行碗形，刀齿多、
   //   包络齿形误差小、单刃负荷小、效率高、寿命长、刚性好。φ160/φ200 盘形仅保留在"其他可选"输出项。
   if (!best) {
@@ -5538,9 +5610,7 @@ function _doCalculate() {
       }
     }
     const cupOthers = selectableList.filter(o => o.type === 'cup' && !(selectedOpt && optKey(o) === optKey(selectedOpt)));
-    const diskOthers = selectableList.filter(o => o.type === 'disk' && !(selectedOpt && optKey(o) === optKey(selectedOpt)));
     if (cupOthers.length > 0) h += foldBlock('碗形档', '碗形插齿刀', cupOthers);
-    if (diskOthers.length > 0) h += foldBlock('盘形档', '盘形插齿刀', diskOthers);
     listContainer.innerHTML = h;
   }
   rerenderToolOptions();
@@ -5578,11 +5648,7 @@ function _doCalculate() {
       selectTip = '⚠️ m=' + m + ' 为非标模数（标准系列无此规格），参考近似标准模数 m=' + best.stdM + '，实际需非标定制。<br>' + selectTip;
     } else if (best.tableLabel === 'DIN') {
       const _bore = best.bore ? best.bore.toFixed(3) : '31.743';
-      if (best.type === 'disk') {
-        selectTip += '（DIN 5480 盘形档，内孔φ' + _bore + 'mm，da0 按工件齿根包络；默认推荐碗形，此为手动切换的盘形）';
-      } else {
-        selectTip += '（DIN 5480 碗形档，内孔φ' + _bore + 'mm，z₂min=' + best.z2minOfficial + '）';
-      }
+      selectTip += '（DIN 5480 碗形档，内孔φ' + _bore + 'mm，z₂min=' + best.z2minOfficial + '）';
     } else if (best.tableLabel === 'DIN-CUSTOM') {
       selectTip += '（φ' + best.nominal + ' 碗形·德标规格刀坯/定制：JB/T 7967 国标 φ100/φ125 档无 m' + best.stdM + '（小模数国标标准现货最大仅 φ75），大工件用此大刀刀齿多、包络误差小、效率高、寿命长；该规格为德标 Liebherr 规格或国产非标定制，刀坯按工件齿廓包络，<b>非国标标准现货，成本与交期更高，下单前请确认齿廓/大径与刀坯</b>）';
     } else if (best.isCustom) {
@@ -5602,16 +5668,13 @@ function _doCalculate() {
     if (rootCaveat) {
       selectTip += '<br>' + rootCaveat;
     }
-    // P2-5：φ200档超大件成本警示
-    if (best.nominal >= 200) {
-      selectTip += '<br>⚠️ φ' + best.nominal + '档为超大件插齿刀，刀体成本高、交货周期长；建议优先评估是否可改用小档（φ160/125）+ 非标磨齿方案，或考虑盘形刀外资刀源降本。';
-    }
+    // P2-5：φ200档超大件成本警示（v1.2.2 批次4 碗形收敛后无 φ200 档，保留兜底不触发）
   }
   if (isInternal && !warningMsg && best) {
     selectTip += '<br>ℹ️ 大径已按 ISO 21771 包络法计算（2·a₀+da₀）；未输入实测大径时基于x₀=0假设，精确值需按齿厚/量棒M反推x₀。';
   }
   if (standardNo === 'DIN 5480' && Math.abs(alphaDeg - 30) < 0.01) {
-    selectTip += '<br>ℹ️ 德标碗形档表按内孔d₃=31.75/44.45mm分档（Liebherr现货目录），z₂min为官方值。本碗形档最大z₀=' + Math.max(...feasibleOptions.map(o=>o.z0).concat(allOptions.map(o=>o.z0))) + '；若设计需要更大z₀，需上盘形DIN5480刀。';
+    selectTip += '<br>ℹ️ 德标碗形档表按内孔d₃=31.75/44.45mm分档（Liebherr现货目录），z₂min为官方值。本碗形档最大z₀=' + Math.max(...feasibleOptions.map(o=>o.z0).concat(allOptions.map(o=>o.z0))) + '；若设计需要更大z₀，需联系刀厂定制更大碗形刀坯。';
   }
   document.getElementById('selectTip').innerHTML = selectTip;
 
@@ -6212,6 +6275,8 @@ function _doCalculate() {
     strip.style.display = '';
   }
   updateSummaryStrip(best, bestShaperDesign);
+  // v1.2.2 批次4：插齿刀报价卡（毛胚成本×2.2/2.5 双公式；高度=锥柄L/碗形B）
+  renderShaperQuote(best, bestShaperDesign);
 
   // R11：新结果淡入高亮
   document.getElementById('result').classList.add('show');
