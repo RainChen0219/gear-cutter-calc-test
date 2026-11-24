@@ -3622,8 +3622,10 @@ function acceptAllSuggestions(){
   Object.keys(pendingSuggestions).forEach(function(id){ if(pendingSuggestions[id]===true) acceptSuggestion(id); });
 }
 function clearAllSuggestions(){
+  var _touchedGear = false;
   Object.keys(pendingSuggestions).forEach(function(id){
     if(pendingSuggestions[id]===true){
+      if(id==='gearType') _touchedGear = true;
       var el=document.getElementById(id);
       if(el){
         if(_ocrPrev.hasOwnProperty(id)){
@@ -3641,6 +3643,11 @@ function clearAllSuggestions(){
       delete pendingMeta[id];
     }
   });
+  // 清空内齿建议后恢复加工方式联动（滚刀选项重新可用）
+  if(_touchedGear){
+    var _gEl = document.getElementById('gearType');
+    if(_gEl) _gEl.dispatchEvent(new Event('change', { bubbles: true }));
+  }
   refreshAcceptBar();
 }
 /* ===== 大径/小径公称值软填充（A2）来源标注 ===== */
@@ -4159,7 +4166,21 @@ function suggestBallDp() {
       document.getElementById('alpha').dispatchEvent(new Event('change',{bubbles:true}));
     }
     if(fields.gearType != null && suggestForOcr('gearType', String(fields.gearType))) ids.push('gearType');
+    // v1.2.2 修复（问题2/3）：识图回填后联动齿制与加工方式
+    // ① 识别到模数 m（公制）→ 自动切公制；识别到径节 DP（后端字段 dp/DP，预留）→ 切英制；触发 change 跑全部联动
+    var _usEl = document.getElementById('unitSystem');
+    if(fields.m != null && _usEl && _usEl.value !== 'metric'){
+      _usEl.value = 'metric';
+      _usEl.dispatchEvent(new Event('change', { bubbles: true }));
+    } else if((fields.dp != null || fields.DP != null) && _usEl && _usEl.value !== 'inch'){
+      _usEl.value = 'inch';
+      _usEl.dispatchEvent(new Event('change', { bubbles: true }));
+    }
     if(fields.m != null && suggestForOcr('m', Number(fields.m))) ids.push('m');
+    // ② 识别到内齿 → 触发 gearType change，refreshProcessMethod 自动禁用滚刀/切回插齿
+    if(fields.gearType != null){
+      document.getElementById('gearType').dispatchEvent(new Event('change', { bubbles: true }));
+    }
     if(fields.z != null && suggestForOcr('z', Number(fields.z))) ids.push('z');
     if(fields.standardNo != null && suggestForOcr('standardNo', String(fields.standardNo))) ids.push('standardNo');
     // 精度等级：设值后触发 change，让系统按既有逻辑联动（刀具精度推荐、fpt/Fp 查表）
@@ -5023,6 +5044,21 @@ function _doCalculate() {
     // 若给了全齿高 h：大径（齿根）=小径（齿顶）+2h（与图纸同口径，自动跟随 DIN 含变位）
     if (totalHeight !== null) {
       daCalc = dfCalc + 2 * totalHeight;
+    }
+  }
+
+  // v1.2.2 修复（问题5/1）：实测大径/小径合理性校验——错误值（识图误识别/手误/单位错/填错框）不得静默进入包络
+  // 容差第一性原理：正常齿坯公差带在 0.1m 量级，取 max(1m, 理论值5%) 作为绝对异常阈值；超限直接阻断
+  const _measChecks = [
+    [daMeasured, daCalc, '大径'],
+    [dfMeasured, dfCalc, '小径']
+  ];
+  for (const [mv, tv, label] of _measChecks) {
+    if (mv === null) continue;
+    const _tol = Math.max(m, 0.05 * tv);
+    if (Math.abs(mv - tv) > _tol) {
+      showInputError(`${label}实测值 ${fmtLen(mv,2)}mm 与理论值 ${fmtLen(tv,2)}mm 偏差 ${fmtLen(Math.abs(mv-tv),2)}mm（超过容差 ${fmtLen(_tol,2)}mm），疑似识图误识别、单位错误或填错输入框，请核对图纸后再计算。`);
+      return;
     }
   }
   
@@ -6292,7 +6328,7 @@ function _doCalculate() {
  *    内容变了（新增修复）就再弹一次，内容没变不再打扰。
  *  - 跨版本：用户上次看到版本之后新发布的所有版本，连同未发布内容一并展示。
  */
-const APP_VERSION = '1.2.1';
+const APP_VERSION = '1.2.2';
 const RELEASED_LOG = [
   { version:'1.2.1', date:'2026-11-19', features:[], fixes:[
       '滚刀齿根高 hf₀ 补顶隙档（全齿高恢复 2.5m）；螺旋升角 γ 改精确 atan；滚刀配对改按标准号判定（GB/T 3478.1 / DIN 5480）',
