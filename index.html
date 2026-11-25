@@ -558,6 +558,10 @@ input.invalid { border-color: var(--color-danger); background: var(--color-dange
   <div class="subtitle">内/外花键与齿轮 → 插齿刀选刀与成品刀参数</div>
   <details class="version-details">
     <summary>版本记录与修订日志（点击展开） <button type="button" onclick="event.preventDefault();openChangelog(true);" style="margin-left:8px;font-size:12px;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:2px 10px;cursor:pointer;">查看更新</button></summary>
+  <div class="subtitle"><b style="color:#1d4ed8;">【V1.2.3 · 内齿变位口径与齿顶厚可行性复核（2026-11-25）】</b>
+  <b>修复</b>：非 DIN 内齿（GB/T 1356 齿轮 / GB/T 3478 花键）大径、小径由“齿坯固定口径”改为“变位口径”——小径（齿顶）=d−2m(ha+x)、大径（齿根）=d+2m(hf−x)，x=0 时与旧公式完全相同；修复大负变位内齿大径偏小约 2m|x|、连锁导致刀坯/齿顶厚/干涉判据全部失真（z55/m1.4 实测大径 82.64 vs 旧算 80.5）。<br>
+  <b>修复</b>：非标改制卡片对定制刀（da0=null 走包络）报 TypeError；Polder 顶切判据修正内齿齿顶圆符号（减号口径 da2=d2−2m(haI+xi)），并区分名义几何变位与实际啮合变位 xMesh。<br>
+  <b>新增 / 拦截</b>：修复齿顶变尖二分边界缺陷（搜索下限 −0.3→−0.5），新增刀齿顶厚可行性检测——当“刀齿顶包络到工件大径”所需齿顶圆处齿顶厚为负（两侧渐开线齿顶交错）时，明确强警告“标准渐开线插齿刀无法加工，需变模数变压力角/齿顶凸角特殊设计”，不再静默输出物理不成立的刀。<br>
   <div class="subtitle"><b style="color:#1d4ed8;">【V1.2.2 迭代补充 · 报价/裕量/碗形收敛（2026-11-24）】</b>
   <b>新增</b>：插齿刀/滚刀报价卡（毛胚成本双公式：毛胚直径=成品外径×105%、高度×104%，体积π·(D/2)²·H×密度8.15，报价①=成本×2.2、②=成本×2.5；材料6542=100元/kg、M35=140元/kg，单价可编辑）；高级选项新增「临界裕量 Δ」（定制刀候选判据 z₂min+Δ，默认0保持零裕量临界现状）；小模数定制刀（d₀&lt;45）结构口径改锥柄（φ25/φ38，高度口径用锥柄总长L）。<br>
   <b>收敛</b>：选刀全部收敛为碗形（用户拍板：盘形不做）——移除盘形小档遍历、DIN盘形档、φ160/200定制盘形兜底与盘形折叠块；锥柄φ25/38保留（小内径工件物理必需）。<br>
@@ -2159,11 +2163,14 @@ function trimTabLinear(T, z0) {
 // 验证：手册 14038 表 x2=0 列全量 41 行复算——x0≤0.105 档与手册值精确吻合（差 0）；
 //       x0 较大档 Polder 判据偏宽松 0~4 齿（手册表含工程裕量），故集成时须与表值取 max。
 // 注意：判据对任意压力角 α 通用（cosα 参数化）；工件为内齿（z2>z1）。
-function polderOvercutZ2min(m, z0, x0, rac, alphaDeg, haI, xi) {
+function polderOvercutZ2min(m, z0, x0, rac, alphaDeg, haI, xi, xMesh) {
   const deg = Math.PI / 180;
   const al = alphaDeg * deg;
   if (xi === undefined || xi === null || isNaN(xi)) xi = 0;
   if (haI === undefined || haI === null || isNaN(haI)) haI = 1;
+  // 啮合变位（决定实际工作中心距）：变位制带侧隙时，工件齿顶圆由名义几何变位 xi 决定，
+  // 而实际工作中心距由成品齿厚变位 xMesh 决定，两者可能不同。未单独提供时默认等于 xi（向后兼容）。
+  if (xMesh === undefined || xMesh === null || isNaN(xMesh)) xMesh = xi;
   const zc = z0;
   // INV(Q)：论文方程32（无量纲直径比 Q，输出单位为度）
   function INVdeg(Q) {
@@ -2183,7 +2190,10 @@ function polderOvercutZ2min(m, z0, x0, rac, alphaDeg, haI, xi) {
   // a_neutr（论文方程31，修正版）
   function aNeutr(zi) {
     const d1 = m * zc, d2 = m * zi;
-    const da1 = 2 * rac, da2 = d2 - 2 * m * (haI - xi);
+    // 内齿齿顶圆（小径）：本工具全程采用减号口径（x 为负=齿增厚、齿槽变窄），
+    // 与下方 aPrime 啮合方程及 designShaperInternal 同一符号体系，故 da2=d2−2m(haI+xi)。
+    // （ISO 正号口径才写作 da2=d2−2m(haI−xIso)；两口径 xIso=−xi，代入后等价。xi=0 时两式相同。）
+    const da1 = 2 * rac, da2 = d2 - 2 * m * (haI + xi);
     const dm = m * (zi - zc) / 2;
     const sT = Math.sqrt(Math.max(0, (da2 * da2 - da1 * da1) / (d2 * d2 - d1 * d1)));
     const t1 = Math.acos(Math.min(1, Math.max(-1, (d1 / da1) * sT)));
@@ -2194,10 +2204,10 @@ function polderOvercutZ2min(m, z0, x0, rac, alphaDeg, haI, xi) {
     const aN = invToAlphaDeg(v);
     return dm * Math.cos(al) / Math.cos(aN * deg);
   }
-  // 无侧隙工作中心距 a'（论文方程19：invα'=invα+2(xi−x0)tanα/(zi−zc)，a'=(rb2−rb1)/cosα'）
+  // 无侧隙工作中心距 a'（论文方程19：invα'=invα+2(xMesh−x0)tanα/(zi−zc)，a'=(rb2−rb1)/cosα'）
   function aPrime(zi) {
     const rb1 = m * zc / 2 * Math.cos(al), rb2 = m * zi / 2 * Math.cos(al);
-    const invAp = Math.tan(al) - al + 2 * (xi - x0) * Math.tan(al) / (zi - zc);
+    const invAp = Math.tan(al) - al + 2 * (xMesh - x0) * Math.tan(al) / (zi - zc);
     const ap = invToAlphaDeg(invAp);
     return (rb2 - rb1) / Math.cos(ap * deg);
   }
@@ -2552,11 +2562,16 @@ function findStandardOptions(m, isInternal, alphaDeg, standardNo, profileModifie
 // v1.2.2 定制刀主导：基于工件几何直接生成最优定制插齿刀（内齿 20°/25°）
 // 不依赖现货档；z0 取"不径向顶切"前提下的最大整数（TRIM 原始临界，不强制 +1，支持零裕量）。
 // 刀坯走包络（da0 不固定）；现货标准刀在主流程保留为并列备选。
-function buildCustomShaper(m, z1, isInternal, alphaDeg, isNonStandard, stdM, marginDelta) {
+function buildCustomShaper(m, z1, isInternal, alphaDeg, isNonStandard, stdM, marginDelta, wpX, xEff) {
   if (!isInternal) return null;                          // 外齿维持现有标准档逻辑
   if (Math.abs(alphaDeg - 30) < 0.01) return null;      // 30°花键维持现有标准档逻辑
   if (m > 9.5) return null;   // m10~12 大模数走 findStandardOptions 成熟的 φ125 刀坯改制分支（z0=round(125/m)）
   marginDelta = (marginDelta === undefined || marginDelta === null || isNaN(marginDelta)) ? 0 : Number(marginDelta);
+  // 工件名义几何变位（减号口径，决定工件齿顶圆/小径）：定制刀候选 overcut 判据的 aNeutr 须计入，
+  // 不能写死 0，否则带变位内齿的 z2min 口径不完整。
+  wpX = (wpX === undefined || wpX === null || isNaN(wpX)) ? 0 : Number(wpX);
+  // 工件实际啮合变位（成品齿厚反推，决定实际工作中心距 aPrime）；未单独提供时默认等于名义 wpX。
+  xEff = (xEff === undefined || xEff === null || isNaN(xEff)) ? wpX : Number(xEff);
   // z0 物理上限：碗形公称 φ125（d0≤约125），且内齿刀齿数必须小于工件齿数
   const z0Max = Math.min(Math.floor(125 / m), z1 - 1);
   // 从大到小找满足 z1 >= 原始临界+可配置裕量（不 round+1）的最大 z0；x0 基准取 0，render 时再包络定 x0
@@ -2565,7 +2580,7 @@ function buildCustomShaper(m, z1, isInternal, alphaDeg, isNonStandard, stdM, mar
     // 再叠加用户可配置临界裕量 Δ（默认0保持零裕量临界现状；Δ≥1 更保守，排除 z1=z2crit 的临界档）
     const z2crit = Math.max(
       Math.round(trimTabLinear(TRIM_T1, z0)),
-      Math.ceil(polderOvercutZ2min(m, z0, 0, m * (z0 / 2 + 1.25), alphaDeg, 1, 0))
+      Math.ceil(polderOvercutZ2min(m, z0, 0, m * (z0 / 2 + 1.25), alphaDeg, 1, wpX, xEff))
     ) + marginDelta;
     if (z1 >= z2crit) {
       const d0 = m * z0;
@@ -3129,14 +3144,28 @@ function shaperX0Range(m, z1, alphaDeg, sWork, DfRoot, z0, ra2) {
   // 许用最小齿顶厚：以 GB/T 6081 标准刀实际齿顶厚为锚（小模数绝对下限约0.4mm，
   // 中大模数约0.15m）；旧华侨大学二次公式系 m7/α15° 特定场景拟合，外推小模数过保守（m1误得0.59），已弃用
   const saMin = Math.max(0.35, 0.15 * m);
-  // X0max-1：齿顶变尖（二分，齿顶厚=许用最小值）
-  let lo = -0.3, hi = 0.95;
-  for (let i = 0; i < 90; i++) {
-    const mid = (lo + hi) / 2;
-    const g = geom(mid);
-    if (saFor(mid, g.da) > saMin) lo = mid; else hi = mid;
+  // X0max-1：齿顶变尖（齿顶厚=许用最小值）。
+  // 搜索下限取插齿刀前端面变位的物理下限 X0_LO_SEARCH=-0.5（与下方 x0min 顶切二分 lo 一致，
+  // 旧刀磨到极限约 x0=-0.5；旧版固定 lo=-0.3，深齿根/大负变位内齿在 x0=-0.3 处齿顶厚已为负，
+  // 二分无法探索更负区域，会误把无解临界停在 -0.3）。
+  // 先在最有利（齿顶厚最大）的物理下限 x0=-0.5 处探测：若仍不足许用值，说明在“刀齿顶包络到
+  // 工件大径”约束下没有任何可行 x0，标记 tipFeasible=false（齿顶交错，需特殊刀具，见成都工具所方法）。
+  const X0_LO_SEARCH = -0.5, X0_HI_SEARCH = 0.95;
+  let tipFeasible = true;
+  let x0maxTip;
+  const gLo = geom(X0_LO_SEARCH);
+  if (!(gLo.da > m * z0 * cosA) || saFor(X0_LO_SEARCH, gLo.da) < saMin) {
+    tipFeasible = false;
+    x0maxTip = X0_LO_SEARCH;
+  } else {
+    let lo = X0_LO_SEARCH, hi = X0_HI_SEARCH;
+    for (let i = 0; i < 90; i++) {
+      const mid = (lo + hi) / 2;
+      const g = geom(mid);
+      if (g.da > m * z0 * cosA && saFor(mid, g.da) > saMin) lo = mid; else hi = mid;
+    }
+    x0maxTip = (lo + hi) / 2;
   }
-  const x0maxTip = (lo + hi) / 2;
   // X0max-2：负啮合角 x0 < x1 + (z1-z0)·inv(α)/(2tan)
   const x0maxNeg = x1 + (z1 - z0) * inv(alphaDeg) / (2 * tanA) - 0.002;
   const x0max = Math.min(x0maxTip, x0maxNeg);
@@ -3151,22 +3180,31 @@ function shaperX0Range(m, z1, alphaDeg, sWork, DfRoot, z0, ra2) {
     const rhs = z0 * tanA - 4 * (ha3 - x0) / (sinA * sinA);
     return lhs >= rhs;
   }
-  lo = -0.5; hi = x0max;
-  for (let i = 0; i < 90; i++) {
-    const mid = (lo + hi) / 2;
-    if (noTopCut(mid)) hi = mid; else lo = mid;
+  let x0min;
+  if (!tipFeasible) {
+    // 齿顶厚在整个可探索范围无解：x0 可行域为空，顶切下限不再参与（主流程按 tipFeasible 强警告）
+    x0min = X0_LO_SEARCH;
+  } else {
+    lo = -0.5; hi = x0max;
+    for (let i = 0; i < 90; i++) {
+      const mid = (lo + hi) / 2;
+      if (noTopCut(mid)) hi = mid; else lo = mid;
+    }
+    x0min = (lo + hi) / 2;
   }
-  let x0min = (lo + hi) / 2;
   // 工程默认：新刀前端面取 0.25（行业常用中等正变位，兼顾寿命与齿顶强度），钳制到许用区间。
   // 依据：真实定制刀实际 x₀=0.08~0.30（案例1=0.30、案例2=0.30、案例3=0.15、案例4=0.08、案例5=0.24）；
   // x₀ 是刀具设计自由度，由刀坯/前端面齿厚反推、不能从工件精确预测。旧逻辑"让刀齿顶厚=0.75m"二分，
   // 对短齿用例5误得 x₀=0.69、刀坯156.7（设计图实际 x₀=0.24、刀坯146.70，偏大10mm），已弃用。
   // 与外齿 shaperX0RangeExternal 的 clamp(0.25) 同口径。
-  let x0rec = Math.max(x0min + 0.02, Math.min(x0max - 0.02, 0.25));
+  let x0rec = tipFeasible
+    ? Math.max(x0min + 0.02, Math.min(x0max - 0.02, 0.25))
+    : X0_LO_SEARCH;
   const gRec = geom(x0rec);
   return {
     x1, x0min, x0max, x0rec,
     saMin,
+    tipFeasible,
     saRec: saFor(x0rec, gRec.da),
     daRec: gRec.da, aRec: gRec.a, apRec: gRec.ap
   };
@@ -3344,12 +3382,14 @@ function spline30MinTeeth(nominal, stdM, z0, da0, db0, ha0) {
 }
 
 // 校验某档是否可用于加工当前工件
-function checkFeasibility(opt, z, isInternal, alphaDeg, wpX) {
+function checkFeasibility(opt, z, isInternal, alphaDeg, wpX, xMesh) {
   const reasons = [];
   let feasible = true;
   const is30 = Math.abs(alphaDeg - 30) < 0.01;
   if (wpX === undefined || wpX === null || isNaN(wpX)) wpX = 0;
-  
+  // 实际啮合变位（成品齿厚反推，决定工作中心距 aPrime）；未提供时默认等于名义 wpX（向后兼容）。
+  if (xMesh === undefined || xMesh === null || isNaN(xMesh)) xMesh = wpX;
+
   if (isInternal) {
     // 内齿轮：z0必须小于z
     if (opt.z0 >= z) {
@@ -3392,7 +3432,7 @@ function checkFeasibility(opt, z, isInternal, alphaDeg, wpX) {
           // （与 buildCustomShaper 候选判据同口径；用例六 z=42 恰临界可加工，+1 会误伤）
           z2min = Math.max(
             Math.round(trimTabLinear(TRIM_T1, opt.z0)),
-            Math.ceil(polderOvercutZ2min(mAct, opt.z0, x0est, opt.da0 / 2, alphaDeg, 1, wpX))
+            Math.ceil(polderOvercutZ2min(mAct, opt.z0, x0est, opt.da0 / 2, alphaDeg, 1, wpX, xMesh))
           );
         } else {
           z2min = radialZ2minByZ0(opt.z0, x0est);
@@ -3406,7 +3446,7 @@ function checkFeasibility(opt, z, isInternal, alphaDeg, wpX) {
       if (!is30 && mAct && opt.da0 && opt.da0 > 0) {
         const ha0Est2 = (opt.ha0 && opt.ha0 > 0) ? opt.ha0 : 1.25;
         const x0est2 = opt.da0 / (2 * mAct) - opt.z0 / 2 - ha0Est2;
-        const pz = polderOvercutZ2min(mAct, opt.z0, x0est2, opt.da0 / 2, alphaDeg, 1, wpX);
+        const pz = polderOvercutZ2min(mAct, opt.z0, x0est2, opt.da0 / 2, alphaDeg, 1, wpX, xMesh);
         z2min = Math.max(z2min, Math.ceil(pz));
       }
       if (z < z2min) {
@@ -5036,10 +5076,12 @@ function _doCalculate() {
       daCalc = dCalc + 2 * m * (ha + x);
     } else {
       // GB/T1356 齿轮 / GB/T3478 花键（插齿刀加工，ISO 21771-1 / 正基元齿轮副 / KHK）：
-      //   齿坯车削外形的齿顶/齿根圆按标准齿廓切制，不随工件变位移动（齿坯口径）。
-      //   小径（齿顶）=d−2·ha·m；大径（齿根）=d+2·hf·m（齿根高已含顶隙，hf=(ha+c*)）。
-      dfCalc = dCalc - 2 * m * ha;
-      daCalc = dCalc + 2 * m * hf;
+      //   变位口径（与图纸一致，正基元：df=m[z∓2(ha+c)+2x]，内齿取+；da 内齿取−）：
+      //   小径（齿顶）=d−2m(ha+x)；大径（齿根）=d+2m(hf−x)，hf=(ha+c*)。
+      //   x=0 时与旧齿坯口径完全相同；旧"固定 ha/hf"口径在大负变位内齿会让齿顶虚长、大径偏小
+      //   约 2m|x|，连锁导致刀坯/齿顶厚/干涉判据全部失真（z55/m1.4 实测大径82.64 vs 旧算80.5）。
+      dfCalc = dCalc - 2 * m * (ha + x);
+      daCalc = dCalc + 2 * m * (hf - x);
     }
     // 若给了全齿高 h：大径（齿根）=小径（齿顶）+2h（与图纸同口径，自动跟随 DIN 含变位）
     if (totalHeight !== null) {
@@ -5354,7 +5396,7 @@ function _doCalculate() {
     rootCaveat = '⚠️ 大径为估算值（按标准刀型），实际大径由所选刀具包络决定，请向客户确认图纸大径。';
   }
   for (const opt of allOptions) {
-    const check = checkFeasibility(opt, z, isInternal, alphaDeg, x);
+    const check = checkFeasibility(opt, z, isInternal, alphaDeg, x, xEff);
     if (check.feasible) {
       feasibleOptions.push(opt);
     }
@@ -5376,7 +5418,7 @@ function _doCalculate() {
     // 临界裕量 Δ（高级选项·定制刀参数）：默认0；作用于定制刀候选判据（v1.2.2 批次4）
     const _mdEl = document.getElementById('customMarginDelta');
     const _md = (_mdEl && _mdEl.value !== '') ? Math.max(0, parseFloat(_mdEl.value) || 0) : 0;
-    customShaper = buildCustomShaper(m, z, isInternal, alphaDeg, _cm.isNonStandard, _cm.stdM, _md);
+    customShaper = buildCustomShaper(m, z, isInternal, alphaDeg, _cm.isNonStandard, _cm.stdM, _md, x, xEff);
     if (customShaper) {
       best = customShaper;
       if (customShaper.customZeroMargin) {
@@ -5440,16 +5482,23 @@ function _doCalculate() {
     // 所有标准档都不可行，收集原因
     const reasons = new Set();
     for (const opt of allOptions) {
-      const check = checkFeasibility(opt, z, isInternal, alphaDeg, x);
+      const check = checkFeasibility(opt, z, isInternal, alphaDeg, x, xEff);
       check.reasons.forEach(r => reasons.add(r));
     }
     // #151(C1-6) 乱码根因修复：reasons 含裸 <（如 "z<z₂min"）/ >（如 "z>34"），经 innerHTML 渲染时被当作标签边界，
     //   从 "<" 起吞文本直到首个 ">"，导致 "z=14<…z>34" 粘连成 "z=1434"。先转义再拼接，innerHTML 安全显示。
-    warningMsg = '⚠️ 标准规格无可用插齿刀：' + Array.from(reasons).join('；').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '。需非标定制或调整设计。';
-    // 不硬选，显示最接近的但标注警告
-    allOptions.sort((a, b) => a.nominal - b.nominal);
-    best = allOptions[0];
-    best.warning = true;
+    const stdNote = '标准规格无可用插齿刀：' + Array.from(reasons).join('；').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '。';
+    if (best) {
+      // 已有可行的定制刀兜底（customShaper）：保留定制刀，不再用 allOptions[0] 覆盖、也不隐藏摘要条；
+      // 仅把"标准档不可行"作为次要提示并入 rootCaveat，明确已自动改用非标定制刀。
+      rootCaveat = (rootCaveat ? rootCaveat + ' ' : '') + 'ℹ️ ' + stdNote + '已按工件几何自动改用非标定制插齿刀。';
+    } else {
+      // 连定制刀都无可行解：维持强警告，挂最接近的标准档并标注 warning，摘要条按原逻辑隐藏、由人工复核。
+      warningMsg = '⚠️ ' + stdNote + '需非标定制或调整设计。';
+      allOptions.sort((a, b) => a.nominal - b.nominal);
+      best = allOptions[0];
+      best.warning = true;
+    }
   }
   // C7 自由测试修正：内齿齿根（大径）做刀一律取公差中值（DfRoot 与 DfRootDeep 内齿同口径，已在上方统一）；
   //   外齿齿根取最深（DfRootDeep=dfMin）。标准现货刀（da0 固定）与定制刀在【内齿】下基准相同，仅 da0 取值方式不同。
@@ -5543,7 +5592,7 @@ function _doCalculate() {
     const _h0Card = (da0Show - _df0Card) / 2;
     const _s0Card = m * (Math.PI / 2 + 2 * cardX0 * Math.tan(alphaDeg * Math.PI / 180));
     const _alpha0CorrCard = correctedProfileAngle(alphaDeg);
-    const infeasibleCheck = allFeasibleEmpty ? checkFeasibility(opt, z, isInternal, alphaDeg, x) : null;
+    const infeasibleCheck = allFeasibleEmpty ? checkFeasibility(opt, z, isInternal, alphaDeg, x, xEff) : null;
     const isInfeasible = allFeasibleEmpty && infeasibleCheck && !infeasibleCheck.feasible;
     const borderColor = isInfeasible ? '#fca5a5' : selected ? '#2563eb' : (opt.foreign ? '#93c5fd' : '#e5e7eb');
     let badge;
@@ -5890,9 +5939,15 @@ function _doCalculate() {
             <div class="param-item"><div class="param-name">刀齿顶厚（许用${x0Range.saMin.toFixed(2)}）</div><div class="param-value">${design.sa.toFixed(3)} mm</div></div>
           </div>
         </details>
-        ${(x0Range.x0max - x0Range.x0min < 0.02)
-          ? '<div class="param-item" style="grid-column:1/-1;color:#b91c1c;font-weight:700;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:8px 10px;">🛑 x₀ 许用窗口宽度仅 ' + (x0Range.x0max - x0Range.x0min).toFixed(3) + '（顶切下限与齿顶变尖上限几乎重合）：此压力角/齿数组合下插齿刀几何上几乎不可行，推荐值仅为理论极限点。建议增大工件齿数/正变位，或改用拉削、更换更大压力角，请工程师复核后再做刀。</div>'
-          : ''}
+        ${(x0Range.tipFeasible === false)
+          ? '<div class="param-item" style="grid-column:1/-1;color:#b91c1c;font-weight:700;background:#fef2f2;border:1px solid #ef4444;border-radius:8px;padding:10px 12px;">🛑 <b>标准渐开线插齿刀无法加工本工件大径（齿根圆）。</b>本内齿为大负变位（减号 x=' + xNominalShown.toFixed(3)
+            + '），齿根高约 ' + (DfRootCut / 2 - m * z / 2).toFixed(2) + ' mm（≈' + ((DfRootCut / 2 - m * z / 2) / m).toFixed(2) + 'm）很深；在“刀齿顶包络到工件大径”所需的刀齿顶圆处，'
+            + '整个可探索 x₀ 范围内刀齿顶厚均为负（最大仅 ' + x0Range.saRec.toFixed(2) + ' mm＜许用 ' + x0Range.saMin.toFixed(2)
+            + '），即两侧渐开线在齿顶圆内相交（齿顶交错）。下方刀坯/中心距仅为理论包络值，<b>不能据此做刀</b>。'
+            + '实际须由刀具厂采用<b>变模数变压力角</b>（保持基圆齿距不变，取大径附近任意圆为新设计基准）或<b>齿顶凸角/全圆角</b>等特殊方法设计，必要时复核图纸齿根高，请工程师人工特殊设计后再加工。</div>'
+          : ((x0Range.x0max - x0Range.x0min < 0.02)
+            ? '<div class="param-item" style="grid-column:1/-1;color:#b91c1c;font-weight:700;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:8px 10px;">🛑 x₀ 许用窗口宽度仅 ' + (x0Range.x0max - x0Range.x0min).toFixed(3) + '（顶切下限与齿顶变尖上限几乎重合）：此压力角/齿数组合下插齿刀几何上几乎不可行，推荐值仅为理论极限点。建议增大工件齿数/正变位，或改用拉削、更换更大压力角，请工程师复核后再做刀。</div>'
+            : '')}
       `;
       // 跨棒距 M 公差带判定 + 侧隙识别（v0.29C；P0/P1 用例3 升级防呆与分级）
       const _srcInt = sInput !== null ? '分圆弧齿厚 s' : (isInternal && EInput !== null ? '齿槽宽 E' : (MInput !== null ? '棒间距 M' : '名义变位'));
@@ -6115,7 +6170,9 @@ function _doCalculate() {
     + (isInternal ? '半切顶插齿刀一次切成（刀齿根填充）' : '半切顶滚刀/插齿刀一次切成');
 
   // ⑦ 非标模数改制计算（刀体结构参考标准档，齿形按非标m磨制）
-  if (best && best.isNonStandard) {
+  // 仅适用于"复用固定外径旧刀体改制"（best.da0 为标准档固定值）；v1.2.2 定制刀主导时
+  // best 是全新定制刀（isCustom、da0=null 走包络），无参考刀体外径，本卡片不适用，落到 else 隐藏。
+  if (best && best.isNonStandard && best.da0) {
     const da0std = best.da0;                       // 参考标准刀体外径（刀坯最大外径）
     const ha0 = best.ha0 || 1.25;                  // 刀具齿顶高系数（标准插齿刀1.25）
     // 刀坯外径硬约束：改制后新刀齿顶圆 = z0'·m + 2·ha0·m ≤ 刀体外径（刀体只能磨小不能放大）
@@ -6328,7 +6385,7 @@ function _doCalculate() {
  *    内容变了（新增修复）就再弹一次，内容没变不再打扰。
  *  - 跨版本：用户上次看到版本之后新发布的所有版本，连同未发布内容一并展示。
  */
-const APP_VERSION = '1.2.2';
+const APP_VERSION = '1.2.3';
 const RELEASED_LOG = [
   { version:'1.2.1', date:'2026-11-19', features:[], fixes:[
       '滚刀齿根高 hf₀ 补顶隙档（全齿高恢复 2.5m）；螺旋升角 γ 改精确 atan；滚刀配对改按标准号判定（GB/T 3478.1 / DIN 5480）',
@@ -6404,17 +6461,10 @@ const RELEASED_LOG = [
       '修复公法线填反时变位静默回退',
     ]},
 ];
-const PENDING_LOG = { version:'1.2.1', date:'2026-11-19', features:[], fixes:[
-  '修复滚刀齿根高 hf₀ 缺顶隙档：hf₀=(ha*+c*)·m（原 ha*·m），标准齿轮滚刀全齿高恢复 2.5m，与 GB/T 6083/GB/T 1356 一致',
-  '滚刀配对由「α=30° 即花键」改为按标准号判定（GB/T 3478.1/DIN 5480），α=30° 仅作未选标准时兜底',
-  '滚刀螺旋升角 γ 改用精确 atan 定义（原 asin 越界时静默输出错误轴向参数）',
-  'γ>5°、前角≠0° 时输出橙色警示（直槽近似/齿形角修正提示），不再静默',
-  '量棒距 M 与 Dp 几何不自洽时提示「未参与变位反推」，不再静默回退名义值',
-  '模数范围报错文案按加工方式分流（滚刀 GB/T 6083 为 0.5~40mm）',
-  '滚刀模式接入测量反推：分圆弧齿厚 s / 跨棒距 M / 公法线 Wk 任一输入即反推实际变位 x₁ 参与工件与滚刀计算（此前静默忽略，工件按名义 x 计算），结果卡显示反推来源',
-  '滚刀模式跨齿数 k 优先取用户输入（Wk 反推场景 k≠理论值），未填时才用理论值',
-  '齿廓系数异常拦截：ha*≤0 或 c*<0 时提示并停止计算（兑现技术方案 3.19.5 承诺）',
-  '滚刀外径过小拦截：da₀≤2·ha₀ 致分度圆 d₀≤0 时提示并停止计算（此前静默输出负 d₀、负 γ）',
+const PENDING_LOG = { version:'1.2.3', date:'2026-11-25', features:[], fixes:[
+  '非 DIN 内齿（GB/T 1356/GB/T 3478）大径小径改“变位口径”：小径=d−2m(ha+x)、大径=d+2m(hf−x)，x=0 与旧公式完全一致；修复大负变位内齿大径偏小约 2m|x|、刀坯/齿顶厚/干涉判据失真',
+  '修复非标改制卡片对定制刀（da0=null 走包络）报 TypeError；Polder 判据修正内齿齿顶圆减号符号并区分名义几何变位与实际啮合变位 xMesh',
+  '修复齿顶变尖二分边界缺陷（搜索下限 −0.3→−0.5），新增齿顶厚可行性检测：包络到工件大径时齿顶厚为负（齿顶交错）则强警告“标准渐开线刀无法加工，需变模数变压力角/齿顶凸角特殊设计”，不再静默输出物理不成立的刀',
 ] };
 
 function _verParts(v){
